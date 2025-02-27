@@ -48,12 +48,14 @@
         "api-reference/api-integration",
         "api-reference/rik-integration",
         "api-reference/seb-integration",
+        "api-reference/payment-clients",
         "api-reference/payment-callbacks"
       ]
     },
     {
       "group": "Security",
       "pages": [
+        "security/security-measures",
         "security/authentication",
         "security/best-practices"
       ]
@@ -63,7 +65,9 @@
       "pages": [
         "development/extending",
         "development/customization",
-        "development/testing"
+        "development/testing",
+        "development/testing-page",
+        "development/logging-monitoring"
       ]
     }
   ],

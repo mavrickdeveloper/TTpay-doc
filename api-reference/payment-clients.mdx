@@ -1,0 +1,593 @@
+---
+title: 'Payment Clients'
+description: 'Integrating with payment providers using TTpay clients'
+---
+
+# Payment Clients
+
+TTpay provides robust client libraries for integrating with various payment providers. This document explains how to use these clients to implement payment processing in your application.
+
+## Available Clients
+
+TTpay includes the following client libraries:
+
+1. **Payment Client**: For processing payments through SEB and other payment gateways
+2. **Callback Handler**: For securely handling payment callbacks
+3. **Payment Form**: For rendering customizable payment forms
+4. **Invoice Client**: For managing invoices and e-invoices
+
+## Payment Client
+
+The `PaymentClient` class provides a comprehensive interface for processing payments, checking statuses, and managing transactions.
+
+```php
+namespace Mavrickdeveloper\Ttpay\Clients\Payment;
+
+class PaymentClient
+{
+    // Implementation details
+}
+```
+
+### Initialization
+
+To initialize the Payment Client:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+
+$paymentClient = new PaymentClient(
+    config('ttpay.api_base'),
+    config('ttpay.username'),
+    config('ttpay.password')
+);
+```
+
+### One-Off Payments
+
+To initiate a one-off payment (customer present):
+
+```php
+$response = $paymentClient->initiateOneOffPayment([
+    'account_name' => 'MyAccount',
+    'amount' => 1000, // amount in minor units (10.00 EUR)
+    'currency' => 'EUR',
+    'order_reference' => 'ORDER-123456',
+    'description' => 'Payment for Order #123456',
+    'customer_url' => 'https://example.com/callback',
+    'email' => 'customer@example.com',
+    'customer_ip' => request()->ip(),
+    'preferred_language' => 'en',
+]);
+
+// The response contains payment_reference and payment_link
+$paymentReference = $response['payment_reference'];
+$paymentLink = $response['payment_link'];
+```
+
+### Customer-Initiated Transactions (CIT)
+
+For payment with tokenization (customer present):
+
+```php
+$response = $paymentClient->initiateCITPayment([
+    'account_name' => 'MyAccount',
+    'amount' => 1000,
+    'currency' => 'EUR',
+    'order_reference' => 'ORDER-123456',
+    'description' => 'Payment for Order #123456',
+    'customer_url' => 'https://example.com/callback',
+    'token_agreement' => [
+        'type' => 'unscheduled',
+        'reference' => 'SUBSCRIPTION-123',
+        'valid_until' => '2023-12-31',
+    ],
+]);
+```
+
+### Merchant-Initiated Transactions (MIT)
+
+For subsequent payments using a saved token (customer not present):
+
+```php
+$response = $paymentClient->initiateMITPayment([
+    'account_name' => 'MyAccount',
+    'amount' => 1000,
+    'currency' => 'EUR',
+    'order_reference' => 'ORDER-789012',
+    'description' => 'Recurring payment for Subscription #123',
+    'token_agreement' => 'TOKEN-REFERENCE-123',
+]);
+```
+
+### Checking Payment Status
+
+To check the status of a payment:
+
+```php
+$status = $paymentClient->getPaymentStatus('PAYMENT-REFERENCE-123');
+
+// Process based on status
+if ($status['payment_state'] === 'completed') {
+    // Payment successful
+} elseif ($status['payment_state'] === 'failed') {
+    // Payment failed
+} elseif ($status['payment_state'] === 'pending') {
+    // Payment pending
+}
+```
+
+### Refunding Payments
+
+To refund a payment:
+
+```php
+$refundResponse = $paymentClient->refundPayment('PAYMENT-REFERENCE-123', [
+    'account_name' => 'MyAccount',
+    'amount' => 500, // Partial refund of 5.00 EUR
+    'currency' => 'EUR',
+    'description' => 'Refund for return of item',
+]);
+```
+
+### Capturing Authorized Payments
+
+For payments that require separate authorization and capture steps:
+
+```php
+$captureResponse = $paymentClient->capturePayment('PAYMENT-REFERENCE-123', [
+    'account_name' => 'MyAccount',
+    'amount' => 1000,
+    'currency' => 'EUR',
+    'description' => 'Capture payment for shipped order',
+]);
+```
+
+### Voiding Payments
+
+To void (cancel) an authorized payment:
+
+```php
+$voidResponse = $paymentClient->voidPayment('PAYMENT-REFERENCE-123', [
+    'account_name' => 'MyAccount',
+    'description' => 'Order canceled by customer',
+]);
+```
+
+### Direct Credit Payments
+
+To initiate a credit directly to a card (payout):
+
+```php
+$creditResponse = $paymentClient->initiateCreditPayment([
+    'account_name' => 'MyAccount',
+    'amount' => 2000,
+    'currency' => 'EUR',
+    'order_reference' => 'PAYOUT-123456',
+    'description' => 'Prize payout',
+    'card_details' => [
+        // Card details for credit
+    ],
+]);
+```
+
+### SEB Bookroy Integration
+
+TTpay also supports the SEB Bookroy API with dedicated methods:
+
+```php
+// Create a payment
+$payment = $paymentClient->createPayment([
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ],
+    'paymentMethod' => 'card',
+    'description' => 'Order #123',
+    'callbackUrl' => 'https://example.com/callbacks',
+    'returnUrl' => 'https://example.com/payment-result',
+    'metadata' => [
+        'orderId' => '123456'
+    ]
+]);
+
+// Get payment details
+$paymentDetails = $paymentClient->getPayment($payment['id']);
+
+// Refund a payment
+$refund = $paymentClient->refundPaymentBookroy($payment['id'], [
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ]
+]);
+
+// Cancel a payment
+$cancellation = $paymentClient->cancelPaymentBookroy($payment['id']);
+
+// Capture an authorized payment
+$capture = $paymentClient->capturePaymentBookroy($payment['id'], [
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ]
+]);
+
+// Get transaction details
+$transaction = $paymentClient->getTransaction($payment['transactions'][0]['id']);
+
+// Register a webhook
+$webhook = $paymentClient->registerWebhook('https://example.com/webhooks');
+```
+
+## Callback Handler
+
+The `CallbackHandler` class securely processes and validates payment callbacks from the payment gateway.
+
+```php
+namespace Mavrickdeveloper\Ttpay\Clients\Payment;
+
+class CallbackHandler
+{
+    // Implementation details
+}
+```
+
+### Initialization
+
+To initialize the Callback Handler:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\CallbackHandler;
+
+$callbackHandler = new CallbackHandler(config('ttpay.callback_secret'));
+```
+
+### Processing Callbacks
+
+To process a callback from the payment gateway:
+
+```php
+use Illuminate\Http\Request;
+
+public function handleCallback(Request $request)
+{
+    try {
+        $result = $callbackHandler->handle($request);
+        
+        // Update payment status in your system
+        // ...
+        
+        return response()->json(['status' => 'success']);
+    } catch (TTpayException $e) {
+        Log::error('Payment callback error: ' . $e->getMessage());
+        return response()->json(['error' => $e->getMessage()], 400);
+    }
+}
+```
+
+### Security Measures
+
+The callback handler implements several security measures:
+
+1. **Required Parameter Validation**: Ensures all required parameters are present
+2. **Timestamp Validation**: Verifies that the callback is within a ±5 minute window
+3. **Signature Validation**: Validates the callback signature using HMAC
+4. **Order Reference Validation**: Ensures the order reference matches your records
+
+For SEB Bookroy callbacks:
+
+```php
+public function handleBookroyCallback(Request $request)
+{
+    $signature = $request->header('X-SEB-Signature');
+    
+    if ($callbackHandler->validateCallbackSignature($request->all(), $signature)) {
+        // Process the payment notification
+        $paymentId = $request->input('paymentId');
+        $status = $request->input('status');
+        
+        // Update your payment record based on the status
+        // ...
+        
+        return response()->json(['status' => 'success']);
+    }
+    
+    return response()->json(['error' => 'Invalid signature'], 403);
+}
+```
+
+## Payment Form
+
+The `PaymentForm` class renders customizable payment forms with various input fields.
+
+```php
+namespace Mavrickdeveloper\Ttpay\Clients\Payment;
+
+class PaymentForm
+{
+    // Implementation details
+}
+```
+
+### Initialization
+
+To initialize the Payment Form:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentForm;
+
+$paymentForm = new PaymentForm();
+```
+
+### Rendering the Form
+
+To render the payment form:
+
+```php
+// In your controller
+public function showPaymentForm()
+{
+    $paymentForm = new PaymentForm();
+    $formHtml = $paymentForm->render();
+    
+    return view('payment.checkout', [
+        'formHtml' => $formHtml,
+    ]);
+}
+```
+
+### Customizing the Form
+
+The payment form includes default fields for card number, expiry date, and CVC. You can customize these fields as needed:
+
+```php
+$paymentForm = new PaymentForm();
+$fields = $paymentForm->getFields();
+
+// Add a custom field
+$fields['name_on_card'] = [
+    'label'       => 'Name on Card',
+    'placeholder' => 'John Doe',
+    'type'        => 'text',
+    'validation'  => 'required|string|max:255',
+];
+
+// Render the customized form
+$formHtml = $paymentForm->render();
+```
+
+## Invoice Client
+
+The `InvoiceClient` class provides methods to interact with the e-Financials API for managing sale invoices.
+
+```php
+namespace Mavrickdeveloper\Ttpay\Clients\Invoices;
+
+class InvoiceClient
+{
+    // Implementation details
+}
+```
+
+### Initialization
+
+To initialize the Invoice Client:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Invoices\InvoiceClient;
+
+$invoiceClient = new InvoiceClient(
+    config('ttpay.invoice_api_url')
+);
+
+// Set credentials
+$invoiceClient->setCredentials([
+    'username' => config('ttpay.invoice_username'),
+    'password' => config('ttpay.invoice_password'),
+]);
+```
+
+### Creating an Invoice
+
+To create a new invoice:
+
+```php
+$invoiceData = [
+    'number' => 'INV-2023-0001',
+    'date' => '2023-04-15',
+    'due_date' => '2023-05-15',
+    'customer' => [
+        'name' => 'Example Customer',
+        'code' => '12345678',
+        'email' => 'customer@example.com',
+    ],
+    'lines' => [
+        [
+            'description' => 'Product A',
+            'quantity' => 2,
+            'unit_price' => 50.00,
+            'vat_rate' => 20,
+        ],
+        [
+            'description' => 'Service B',
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'vat_rate' => 20,
+        ],
+    ],
+];
+
+$invoice = $invoiceClient->createInvoice($invoiceData);
+```
+
+### Retrieving an Invoice
+
+To get invoice details:
+
+```php
+$invoice = $invoiceClient->getInvoice($invoiceId);
+```
+
+### Updating an Invoice
+
+To update an existing invoice:
+
+```php
+$updateData = [
+    'due_date' => '2023-06-15',
+    'lines' => [
+        // Updated invoice lines
+    ],
+];
+
+$updatedInvoice = $invoiceClient->updateInvoice($invoiceId, $updateData);
+```
+
+### Registering an Invoice
+
+To register an invoice (finalize it):
+
+```php
+$registeredInvoice = $invoiceClient->registerInvoice($invoiceId);
+```
+
+### Invalidating an Invoice
+
+To invalidate (cancel) an invoice:
+
+```php
+$invalidatedInvoice = $invoiceClient->invalidateInvoice($invoiceId);
+```
+
+### Sending an Invoice
+
+To send an invoice via email:
+
+```php
+$result = $invoiceClient->sendInvoice($invoiceId, [
+    'email' => 'customer@example.com',
+    'subject' => 'Your Invoice #INV-2023-0001',
+    'message' => 'Please find your invoice attached.',
+]);
+```
+
+## Integration Examples
+
+### Complete Payment Flow
+
+Here's a complete example of a payment flow using TTpay clients:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+use Mavrickdeveloper\Ttpay\Clients\Invoices\InvoiceClient;
+
+class PaymentController extends Controller
+{
+    protected $paymentClient;
+    protected $invoiceClient;
+    
+    public function __construct()
+    {
+        $this->paymentClient = new PaymentClient(
+            config('ttpay.api_base'),
+            config('ttpay.username'),
+            config('ttpay.password')
+        );
+        
+        $this->invoiceClient = new InvoiceClient(
+            config('ttpay.invoice_api_url')
+        );
+        
+        $this->invoiceClient->setCredentials([
+            'username' => config('ttpay.invoice_username'),
+            'password' => config('ttpay.invoice_password'),
+        ]);
+    }
+    
+    public function checkout(Request $request)
+    {
+        // Create an order in your system
+        $order = Order::create([
+            'user_id' => auth()->id(),
+            'total' => $request->input('amount'),
+            'status' => 'pending',
+        ]);
+        
+        // Initiate payment
+        $response = $this->paymentClient->initiateOneOffPayment([
+            'account_name' => config('ttpay.account_name'),
+            'amount' => $order->total * 100, // Convert to minor units
+            'currency' => 'EUR',
+            'order_reference' => $order->id,
+            'description' => 'Payment for Order #' . $order->id,
+            'customer_url' => route('payment.callback'),
+            'email' => auth()->user()->email,
+            'customer_ip' => $request->ip(),
+        ]);
+        
+        // Store payment reference
+        $order->update([
+            'payment_reference' => $response['payment_reference'],
+        ]);
+        
+        // Redirect to payment page
+        return redirect($response['payment_link']);
+    }
+    
+    public function callback(Request $request)
+    {
+        // Process callback
+        $callbackHandler = new CallbackHandler(config('ttpay.callback_secret'));
+        $result = $callbackHandler->handle($request);
+        
+        // Get order reference from callback
+        $orderReference = $request->input('order_reference');
+        $order = Order::findOrFail($orderReference);
+        
+        // Check payment status
+        $status = $this->paymentClient->getPaymentStatus($order->payment_reference);
+        
+        if ($status['payment_state'] === 'completed') {
+            // Update order status
+            $order->update(['status' => 'paid']);
+            
+            // Create invoice
+            $invoiceData = [
+                'number' => 'INV-' . $order->id,
+                'date' => now()->format('Y-m-d'),
+                'due_date' => now()->addDays(30)->format('Y-m-d'),
+                'customer' => [
+                    'name' => auth()->user()->name,
+                    'code' => auth()->user()->id,
+                    'email' => auth()->user()->email,
+                ],
+                'lines' => [
+                    [
+                        'description' => 'Payment for Order #' . $order->id,
+                        'quantity' => 1,
+                        'unit_price' => $order->total,
+                        'vat_rate' => 20,
+                    ],
+                ],
+            ];
+            
+            $invoice = $this->invoiceClient->createInvoice($invoiceData);
+            $this->invoiceClient->registerInvoice($invoice['id']);
+            $this->invoiceClient->sendInvoice($invoice['id'], [
+                'email' => auth()->user()->email,
+            ]);
+            
+            return redirect()->route('orders.show', $order->id)
+                ->with('success', 'Payment successful! Your invoice has been sent to your email.');
+        } else {
+            return redirect()->route('orders.show', $order->id)
+                ->with('error', 'Payment failed: ' . $status['payment_state']);
+        }
+    }
+}
+```
+
+## Conclusion
+
+TTpay's client libraries provide a comprehensive solution for payment processing, callback handling, form rendering, and invoice management. By following the examples in this document, you can quickly implement secure payment processing in your application.

@@ -1,0 +1,430 @@
+---
+title: 'Testing Page'
+description: 'How to use the TTpay testing page for payment integration testing'
+---
+
+# Testing Page
+
+TTpay includes a comprehensive testing page that allows you to test all aspects of the payment integration without having to build a full application. This document explains how to use the testing page.
+
+## Overview
+
+The testing page provides an interface to:
+
+1. Test payment creation, execution, and status checks
+2. Monitor callbacks in real-time
+3. View detailed logs
+4. Test different payment methods
+5. Generate test invoices
+6. View and debug API requests and responses
+7. Test both live and sandbox environments
+
+## Accessing the Testing Page
+
+The testing page is available at the following route:
+
+```
+/ttpay/test
+```
+
+This route is defined in the package's routes file:
+
+```php
+// routes/web.php
+Route::prefix('ttpay')->name('ttpay.')->group(function () {
+    Route::get('/test', [TestController::class, 'index'])->name('test');
+    Route::post('/test/payment', [TestController::class, 'createPayment'])->name('test.payment');
+    Route::get('/test/status/{paymentId}', [TestController::class, 'checkStatus'])->name('test.status');
+    Route::post('/test/refund', [TestController::class, 'refundPayment'])->name('test.refund');
+    Route::post('/test/cancel', [TestController::class, 'cancelPayment'])->name('test.cancel');
+    Route::post('/test/capture', [TestController::class, 'capturePayment'])->name('test.capture');
+    Route::post('/test/invoice', [TestController::class, 'generateInvoice'])->name('test.invoice');
+});
+```
+
+## Test Controller
+
+The test page is powered by the `TestController` class:
+
+```php
+namespace Mavrickdeveloper\Ttpay\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+use Mavrickdeveloper\Ttpay\Services\InvoiceService;
+
+class TestController extends Controller
+{
+    protected $paymentClient;
+    protected $invoiceService;
+    
+    public function __construct(PaymentClient $paymentClient, InvoiceService $invoiceService)
+    {
+        $this->paymentClient = $paymentClient;
+        $this->invoiceService = $invoiceService;
+    }
+    
+    public function index()
+    {
+        return view('ttpay::test.index', [
+            'logs' => $this->getRecentLogs(),
+            'testMode' => config('ttpay.test_mode', true),
+        ]);
+    }
+    
+    // Other methods...
+}
+```
+
+## Using the Testing Page
+
+### Creating a Test Payment
+
+1. Navigate to `/ttpay/test`
+2. Fill in the payment details:
+   - Amount
+   - Currency
+   - Description
+   - Payment method
+3. Click "Create Payment"
+4. You'll be redirected to the payment gateway
+5. Complete the payment using test card details
+6. You'll be redirected back to the testing page
+7. The payment status will be updated in real-time
+
+### Test Card Details
+
+For testing payments, you can use the following test card details:
+
+| Card Number | Expiry Date | CVC | Result |
+|-------------|-------------|-----|--------|
+| 4111 1111 1111 1111 | Any future date | Any 3 digits | Success |
+| 4242 4242 4242 4242 | Any future date | Any 3 digits | Success |
+| 4000 0000 0000 0002 | Any future date | Any 3 digits | Declined |
+| 4000 0000 0000 0009 | Any future date | Any 3 digits | Processing Error |
+
+### Monitoring Callbacks
+
+The testing page includes a real-time callback monitor that displays all incoming callbacks:
+
+```javascript
+// testing-page.js
+const callbackMonitor = document.getElementById('callback-monitor');
+
+// Poll for new callbacks every 2 seconds
+setInterval(async () => {
+    const response = await fetch('/ttpay/test/callbacks');
+    const callbacks = await response.json();
+    
+    // Clear existing callbacks
+    callbackMonitor.innerHTML = '';
+    
+    // Add new callbacks
+    callbacks.forEach(callback => {
+        const callbackElement = document.createElement('div');
+        callbackElement.className = 'callback-item';
+        callbackElement.innerHTML = `
+            <div class="callback-time">${callback.time}</div>
+            <div class="callback-status ${callback.status.toLowerCase()}">${callback.status}</div>
+            <div class="callback-details">
+                <pre>${JSON.stringify(callback.data, null, 2)}</pre>
+            </div>
+        `;
+        callbackMonitor.appendChild(callbackElement);
+    });
+}, 2000);
+```
+
+### Viewing Test Logs
+
+The testing page displays a log of all payment-related activities:
+
+```php
+protected function getRecentLogs()
+{
+    if (!file_exists(storage_path('logs/ttpay.log'))) {
+        return [];
+    }
+    
+    $logContent = file_get_contents(storage_path('logs/ttpay.log'));
+    $logLines = explode("\n", $logContent);
+    $logLines = array_filter($logLines);
+    $logs = [];
+    
+    foreach (array_slice(array_reverse($logLines), 0, 50) as $line) {
+        if (preg_match('/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (\w+)\.(\w+): (.+)$/', $line, $matches)) {
+            $logs[] = [
+                'time' => $matches[1],
+                'level' => $matches[2],
+                'channel' => $matches[3],
+                'message' => $matches[4],
+            ];
+        }
+    }
+    
+    return $logs;
+}
+```
+
+## Testing Different Payment Methods
+
+The testing page allows you to test different payment methods:
+
+```php
+public function createPayment(Request $request)
+{
+    $validated = $request->validate([
+        'amount' => 'required|numeric|min:0.01',
+        'currency' => 'required|string|size:3',
+        'description' => 'required|string|max:255',
+        'payment_method' => 'required|string|in:card,bank,wallet',
+    ]);
+    
+    try {
+        $payment = $this->paymentClient->createPayment([
+            'amount' => [
+                'value' => (float) $validated['amount'],
+                'currency' => $validated['currency']
+            ],
+            'paymentMethod' => $validated['payment_method'],
+            'description' => $validated['description'],
+            'callbackUrl' => route('ttpay.test.callback'),
+            'returnUrl' => route('ttpay.test.return'),
+            'metadata' => [
+                'test' => true,
+                'created_at' => now()->toIso8601String(),
+            ]
+        ]);
+        
+        // Store payment ID in session
+        session(['last_payment_id' => $payment['id']]);
+        
+        // Redirect to payment page
+        return redirect($payment['redirectUrl']);
+    } catch (\Exception $e) {
+        return back()->with('error', 'Payment creation failed: ' . $e->getMessage());
+    }
+}
+```
+
+## Testing Invoice Generation
+
+You can generate test invoices directly from the testing page:
+
+```php
+public function generateInvoice(Request $request)
+{
+    $validated = $request->validate([
+        'customer_name' => 'required|string|max:255',
+        'customer_email' => 'required|email',
+        'amount' => 'required|numeric|min:0.01',
+        'description' => 'required|string|max:255',
+    ]);
+    
+    try {
+        // Create a dummy order for testing
+        $order = new \stdClass();
+        $order->id = 'TEST-' . now()->format('YmdHis');
+        $order->amount = $validated['amount'];
+        $order->description = $validated['description'];
+        $order->customer_name = $validated['customer_name'];
+        $order->customer_email = $validated['customer_email'];
+        
+        // Generate invoice
+        $invoice = $this->invoiceService->generateFromOrder($order);
+        
+        // Send invoice email
+        $this->invoiceService->sendInvoiceEmail($invoice);
+        
+        return back()->with('success', 'Test invoice generated and sent to ' . $validated['customer_email']);
+    } catch (\Exception $e) {
+        return back()->with('error', 'Invoice generation failed: ' . $e->getMessage());
+    }
+}
+```
+
+## Real-time Status Updates
+
+The testing page includes real-time status updates for payments:
+
+```javascript
+// testing-page.js
+const paymentStatus = document.getElementById('payment-status');
+const paymentId = paymentStatus.dataset.paymentId;
+
+if (paymentId) {
+    // Check payment status every 2 seconds
+    const statusChecker = setInterval(async () => {
+        const response = await fetch(`/ttpay/test/status/${paymentId}`);
+        const data = await response.json();
+        
+        // Update status display
+        document.getElementById('status-value').textContent = data.status;
+        document.getElementById('status-value').className = `status-${data.status.toLowerCase()}`;
+        
+        // Update payment details
+        document.getElementById('payment-details').innerHTML = `
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+        
+        // If payment is in a final state, stop checking
+        if (['COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED'].includes(data.status)) {
+            clearInterval(statusChecker);
+        }
+    }, 2000);
+}
+```
+
+## Switching Between Test and Live Modes
+
+The testing page allows you to switch between test and live environments:
+
+```php
+public function switchMode(Request $request)
+{
+    $mode = $request->input('mode') === 'live' ? 'live' : 'test';
+    
+    // Update config
+    config(['ttpay.test_mode' => $mode === 'test']);
+    
+    // Also store in session for persistence
+    session(['ttpay_test_mode' => $mode === 'test']);
+    
+    return back()->with('success', 'Switched to ' . $mode . ' mode');
+}
+```
+
+## Testing Error Scenarios
+
+The testing page includes options to test error scenarios:
+
+```php
+public function simulateError(Request $request)
+{
+    $errorType = $request->input('error_type');
+    
+    switch ($errorType) {
+        case 'connection':
+            // Simulate connection error
+            // Set invalid API URL temporarily
+            config(['ttpay.seb.api_url' => 'https://nonexistent-api.example.com']);
+            break;
+            
+        case 'authentication':
+            // Simulate authentication error
+            // Set invalid credentials temporarily
+            config(['ttpay.seb.username' => 'invalid-username']);
+            config(['ttpay.seb.password' => 'invalid-password']);
+            break;
+            
+        case 'validation':
+            // Simulate validation error
+            // This will be caught in the createPayment validation
+            return redirect()->route('ttpay.test')
+                ->withInput()
+                ->withErrors(['amount' => 'Invalid amount']);
+            
+        case 'timeout':
+            // Simulate timeout
+            sleep(30); // This will likely timeout
+            break;
+    }
+    
+    return $this->createPayment($request);
+}
+```
+
+## Implementing Your Own Testing Page
+
+You can create your own custom testing page by extending the built-in one:
+
+1. Publish the testing page views:
+
+```bash
+php artisan vendor:publish --tag=ttpay-test-views
+```
+
+2. Customize the published views in `resources/views/vendor/ttpay/test/`:
+
+```php
+// resources/views/vendor/ttpay/test/index.blade.php
+
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <h1>Custom Payment Testing Page</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Create Test Payment</div>
+                    <div class="card-body">
+                        <form action="{{ route('ttpay.test.payment') }}" method="post">
+                            @csrf
+                            
+                            <!-- Your custom form fields -->
+                            
+                            <button type="submit" class="btn btn-primary">Create Payment</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <!-- Your custom status display -->
+            </div>
+        </div>
+    </div>
+@endsection
+```
+
+3. Create a custom test controller:
+
+```php
+namespace App\Http\Controllers;
+
+use Mavrickdeveloper\Ttpay\Http\Controllers\TestController as BaseTestController;
+
+class CustomTestController extends BaseTestController
+{
+    public function index()
+    {
+        // Custom logic here
+        
+        return view('vendor.ttpay.test.index', [
+            'logs' => $this->getRecentLogs(),
+            'testMode' => config('ttpay.test_mode', true),
+            'customData' => 'Your custom data',
+        ]);
+    }
+    
+    // Override or add methods as needed
+}
+```
+
+4. Update your routes:
+
+```php
+// routes/web.php
+Route::prefix('custom-ttpay-test')->name('custom.ttpay.test.')->group(function () {
+    Route::get('/', [CustomTestController::class, 'index'])->name('index');
+    // Add your custom routes
+});
+```
+
+## Best Practices for Testing
+
+When using the testing page, follow these best practices:
+
+1. **Use Test Mode**: Always use test mode for testing, never test in production
+2. **Test All Scenarios**: Test both success and failure cases
+3. **Monitor Logs**: Review logs to diagnose issues
+4. **Test Callbacks**: Ensure your callback handling works correctly
+5. **Test From Public URL**: For callback testing, use a public URL (consider using ngrok for local development)
+6. **Clear Test Data**: Regularly clear test data to avoid confusion
+
+## Conclusion
+
+The TTpay testing page provides a comprehensive environment for testing all aspects of the payment integration. Whether you're implementing a new payment flow or troubleshooting an existing one, the testing page gives you the tools you need to ensure everything works correctly.

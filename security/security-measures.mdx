@@ -1,0 +1,407 @@
+---
+title: 'Security Measures'
+description: 'Comprehensive security features implemented in TTpay'
+---
+
+# Security Measures
+
+TTpay implements industry-standard security practices to ensure safe and secure payment processing. This document outlines the key security measures implemented in the package.
+
+## Input Validation and Sanitization
+
+TTpay employs strong input validation and sanitization to prevent unauthorized access or tampering:
+
+```php
+// Example validation for payment data
+$validator = Validator::make($request->all(), [
+    'amount' => 'required|numeric|min:0.01',
+    'currency' => 'required|string|size:3',
+    'order_reference' => 'required|string|max:255',
+    'description' => 'required|string|max:500',
+    'customer_url' => 'required|url',
+    'email' => 'required|email',
+    'customer_ip' => 'required|ip',
+]);
+
+if ($validator->fails()) {
+    throw new TTpayException('Invalid payment parameters: ' . json_encode($validator->errors()->toArray()));
+}
+```
+
+Key validation features include:
+
+1. **Type Validation**: Ensures input values match expected data types
+2. **Range Validation**: Enforces minimum and maximum values for numeric inputs
+3. **Format Validation**: Validates formats for emails, URLs, IPs, etc.
+4. **Size Validation**: Limits string lengths to prevent buffer overflows
+5. **Context-aware Validation**: Apply specific rules based on payment type
+
+## HTTPS for API Communications
+
+All API communications in TTpay are secured with HTTPS:
+
+```php
+protected function sendRequest(string $method, string $endpoint, array $data, string $failMessage): array
+{
+    $payload = array_merge($data, [
+        'api_username' => $this->username,
+        'timestamp'    => now()->toIso8601String(),
+        'nonce'       => Str::uuid()->toString(),
+    ]);
+
+    $httpClient = Http::withBasicAuth($this->username, $this->password)
+        ->withHeaders([
+            'Content-Type' => 'application/json',
+        ]);
+
+    // All requests use HTTPS by default in the base URL
+    if (strtolower($method) === 'get') {
+        $response = $httpClient->get("{$this->apiBase}{$endpoint}", $payload);
+    } else {
+        $response = $httpClient->post("{$this->apiBase}{$endpoint}", $payload);
+    }
+
+    // Response handling...
+}
+```
+
+TTpay enforces HTTPS by:
+
+1. **SSL Verification**: Verifies SSL certificates for all API requests
+2. **Secure URLs**: Uses HTTPS URLs for all external communications
+3. **TLS Requirement**: Requires TLS 1.2 or higher for all API connections
+
+## CSRF and XSS Protection
+
+TTpay implements robust protection against Cross-Site Request Forgery (CSRF) and Cross-Site Scripting (XSS) attacks:
+
+### CSRF Protection
+
+```php
+// In route definitions
+Route::post('/payments/process', [PaymentController::class, 'process'])
+    ->middleware(['web', 'csrf']);
+```
+
+Laravel's built-in CSRF protection is fully utilized:
+
+1. **CSRF Tokens**: All forms include CSRF tokens
+2. **Token Validation**: Validates CSRF tokens on all POST, PUT, DELETE requests
+3. **Same-Site Cookies**: Uses SameSite=Lax cookies by default
+
+### XSS Protection
+
+```php
+// Example sanitization for displaying order details
+<div class="order-info">
+    <h3>{{ e($order->description) }}</h3>
+    <p>Amount: {{ e($order->amount) }} {{ e($order->currency) }}</p>
+</div>
+```
+
+XSS prevention measures include:
+
+1. **Output Escaping**: All user-generated content is escaped before rendering
+2. **Content-Security-Policy**: Implements strict CSP headers
+3. **HTML Purification**: Sanitizes HTML input when allowed
+4. **JSON Encoding**: Properly encodes JSON data to prevent injection
+
+## Secure Callback Handling
+
+TTpay implements multiple security checks for payment callbacks:
+
+```php
+/**
+ * Process and validate the callback request.
+ */
+public function handle(Request $request): array
+{
+    $this->validateRequiredParameters($request);
+    $this->validateTimestamp((string) $request->input('timestamp'));
+
+    if (!$this->validateSignature($request)) {
+        throw new TTpayException('Invalid callback signature.');
+    }
+
+    // Process the verified callback...
+}
+```
+
+Callback security features include:
+
+### Nonce Verification
+
+```php
+private function validateRequiredParameters(Request $request): void
+{
+    $required = ['nonce', 'timestamp', 'order_reference'];
+    foreach ($required as $param) {
+        if (empty($request->input($param))) {
+            throw new TTpayException('Invalid callback parameters.');
+        }
+    }
+    
+    // Verify nonce hasn't been used before
+    $nonceExists = NonceRepository::exists($request->input('nonce'));
+    if ($nonceExists) {
+        throw new TTpayException('Nonce has already been used.');
+    }
+    
+    // Store nonce to prevent replay
+    NonceRepository::store($request->input('nonce'));
+}
+```
+
+### Timestamp Validation
+
+```php
+private function validateTimestamp(string $timestamp): void
+{
+    $requestTime = strtotime($timestamp);
+    if (abs(time() - $requestTime) > 300) { // ±5 minutes window
+        throw new TTpayException('Timestamp is out of permitted window.');
+    }
+}
+```
+
+### Order Reference Validation
+
+```php
+private function validateOrderReference(string $orderReference): void
+{
+    $order = Order::where('reference', $orderReference)->first();
+    if (!$order) {
+        throw new TTpayException('Invalid order reference.');
+    }
+    
+    // Additional validations...
+}
+```
+
+### Signature Verification
+
+```php
+protected function validateSignature(Request $request): bool
+{
+    $data = $request->only(['nonce', 'timestamp', 'order_reference', 'payment_state']);
+    
+    // Sort parameters alphabetically by key
+    ksort($data);
+    
+    // Concatenate parameters
+    $concatenated = '';
+    foreach ($data as $key => $value) {
+        $concatenated .= $key . '=' . $value;
+    }
+    
+    // Add secret
+    $concatenated .= $this->secret;
+    
+    // Generate HMAC
+    $expectedSignature = hash_hmac('sha256', $concatenated, $this->secret);
+    
+    // Compare with provided signature
+    return hash_equals($expectedSignature, $request->input('signature'));
+}
+```
+
+## Token Agreement Validation
+
+For tokenized transactions, TTpay ensures security with token agreement validation:
+
+```php
+private function validateTokenAgreement(string $tokenReference, string $type): void
+{
+    $agreement = TokenAgreement::where('reference', $tokenReference)->first();
+    
+    if (!$agreement) {
+        throw new TTpayException('Invalid token agreement reference.');
+    }
+    
+    // Check agreement type
+    if ($agreement->type !== $type) {
+        throw new TTpayException('Token agreement type mismatch.');
+    }
+    
+    // Check expiration
+    if ($agreement->valid_until && now()->isAfter($agreement->valid_until)) {
+        throw new TTpayException('Token agreement has expired.');
+    }
+}
+```
+
+## Database Security
+
+TTpay implements several database security measures:
+
+### Parameterized Queries
+
+All database interactions use Laravel's query builder or Eloquent ORM, which automatically use parameterized queries:
+
+```php
+// Secure database query using parameters
+$payment = Payment::where('reference', $paymentReference)
+    ->where('status', 'pending')
+    ->first();
+```
+
+### Sensitive Data Encryption
+
+Sensitive data is encrypted in the database:
+
+```php
+protected $casts = [
+    'card_details' => 'encrypted',
+    'customer_data' => 'encrypted',
+];
+```
+
+### Transaction Integrity
+
+Database operations that involve multiple related records use transactions:
+
+```php
+DB::transaction(function () use ($payment, $order) {
+    // Update payment status
+    $payment->update(['status' => 'completed']);
+    
+    // Update order status
+    $order->update(['status' => 'paid']);
+    
+    // Create invoice
+    $invoice = Invoice::create([
+        'order_id' => $order->id,
+        'amount' => $order->amount,
+        // Other invoice details...
+    ]);
+});
+```
+
+## Logging and Monitoring
+
+TTpay implements comprehensive logging for security monitoring:
+
+```php
+// Log payment attempt
+Log::info('Payment initiated', [
+    'user_id' => auth()->id(),
+    'order_reference' => $orderReference,
+    'amount' => $amount,
+    'currency' => $currency,
+    'ip_address' => request()->ip(),
+    'user_agent' => request()->userAgent(),
+]);
+
+// Log security events
+Log::warning('Suspicious callback attempt', [
+    'order_reference' => $request->input('order_reference'),
+    'timestamp' => $request->input('timestamp'),
+    'ip_address' => $request->ip(),
+    'reason' => 'Invalid signature',
+]);
+```
+
+Key logging features:
+
+1. **Transaction Logging**: Records all payment transactions
+2. **Error Logging**: Logs all exceptions and errors
+3. **Security Event Logging**: Logs suspicious activities
+4. **Audit Logging**: Tracks admin actions for accountability
+
+## Error Handling
+
+TTpay implements secure error handling that doesn't leak sensitive information:
+
+```php
+try {
+    // Process payment
+    $result = $paymentClient->processPayment($paymentData);
+    return $result;
+} catch (TTpayException $e) {
+    // Log detailed error internally
+    Log::error('Payment processing error', [
+        'message' => $e->getMessage(),
+        'trace' => $e->getTraceAsString(),
+        'payment_data' => Arr::except($paymentData, ['card_number', 'cvv']),
+    ]);
+    
+    // Return generic error to user
+    throw new TTpayException('Unable to process payment. Please try again later.');
+}
+```
+
+## API Authentication
+
+TTpay implements secure API authentication for all external communications:
+
+```php
+// Basic authentication
+$response = Http::withBasicAuth($this->username, $this->password)
+    ->withHeaders([
+        'Content-Type' => 'application/json',
+    ])
+    ->post($url, $data);
+
+// HMAC authentication
+$timestamp = time();
+$nonce = Str::uuid()->toString();
+$signature = $this->generateSignature($timestamp, $nonce, $endpoint, $data);
+
+$response = Http::withHeaders([
+    'Content-Type' => 'application/json',
+    'X-Timestamp' => $timestamp,
+    'X-Nonce' => $nonce,
+    'X-Signature' => $signature,
+])
+->post($url, $data);
+```
+
+## Data Privacy and Compliance
+
+TTpay is designed with data privacy in mind:
+
+1. **Data Minimization**: Collects only necessary payment data
+2. **Data Retention**: Implements appropriate retention policies
+3. **PCI Compliance**: Follows PCI DSS guidelines for card data
+4. **GDPR Compliance**: Includes features for GDPR compliance
+
+## Best Practices for Implementation
+
+When implementing TTpay, follow these security best practices:
+
+1. **Keep Credentials Secure**: Store API credentials securely in environment variables
+2. **Regular Updates**: Keep TTpay and dependencies up to date
+3. **Validate All Inputs**: Always validate user inputs before processing
+4. **Use HTTPS**: Ensure your application uses HTTPS for all requests
+5. **Monitor Logs**: Regularly review payment logs for suspicious activities
+6. **Implement Rate Limiting**: Add rate limiting to prevent brute force attacks
+
+Example security configuration:
+
+```php
+// config/ttpay.php
+
+return [
+    // API credentials (from environment variables)
+    'username' => env('TTPAY_USERNAME'),
+    'password' => env('TTPAY_PASSWORD'),
+    'api_base' => env('TTPAY_API_BASE'),
+    
+    // Security settings
+    'callback_secret' => env('TTPAY_CALLBACK_SECRET'),
+    'encryption_key' => env('TTPAY_ENCRYPTION_KEY'),
+    
+    // Security options
+    'options' => [
+        'enforce_https' => true,
+        'signature_algorithm' => 'sha256',
+        'callback_timeout' => 300, // 5 minutes
+        'max_retries' => 3,
+        'log_level' => 'info',
+    ],
+];
+```
+
+## Conclusion
+
+TTpay implements comprehensive security measures to protect payment data and ensure secure transactions. By following the guidelines in this document, you can ensure that your implementation of TTpay maintains the highest security standards.

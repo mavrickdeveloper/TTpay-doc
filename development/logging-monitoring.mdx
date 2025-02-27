@@ -1,0 +1,570 @@
+---
+title: 'Logging & Monitoring'
+description: 'Comprehensive guide to logging and monitoring payment activities with TTpay'
+---
+
+# Logging & Monitoring
+
+TTpay includes a comprehensive logging and monitoring system that helps you track payment activities, debug issues, and ensure security. This document explains how to use and customize the logging features.
+
+## Overview
+
+TTpay logs the following types of events:
+
+1. **Payment Activities**: Creation, status changes, and completion of payments
+2. **API Requests**: All outgoing API requests to payment gateways
+3. **API Responses**: All responses from payment gateways
+4. **Callbacks**: All incoming callbacks and webhook events
+5. **Errors**: Any errors or exceptions that occur during payment processing
+6. **Security Events**: Suspicious activities, authentication failures, and validation errors
+
+## Default Logging Configuration
+
+By default, TTpay logs to a dedicated log channel:
+
+```php
+// config/logging.php
+'channels' => [
+    // ...
+    'ttpay' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/ttpay.log'),
+        'level' => env('TTPAY_LOG_LEVEL', 'info'),
+        'days' => 14,
+    ],
+]
+```
+
+## Customizing Log Configuration
+
+You can customize the TTpay logging configuration in your `.env` file:
+
+```
+TTPAY_LOG_CHANNEL=ttpay
+TTPAY_LOG_LEVEL=debug
+```
+
+These environment variables are used in the TTpay configuration:
+
+```php
+// config/ttpay.php
+'logging' => [
+    'channel' => env('TTPAY_LOG_CHANNEL', 'ttpay'),
+    'level' => env('TTPAY_LOG_LEVEL', 'info'),
+    'sensitive_fields' => [
+        'card_number',
+        'cvv',
+        'password',
+        'secret',
+        'token',
+    ],
+],
+```
+
+## Log Levels
+
+TTpay uses the following log levels:
+
+| Level | Description | Examples |
+|-------|-------------|----------|
+| DEBUG | Detailed diagnostic information | API request parameters, response details |
+| INFO | Normal application events | Payment creation, status changes |
+| NOTICE | Important but normal events | Payment completion |
+| WARNING | Exceptional occurrences that are not errors | Unusual API responses, rate limit warnings |
+| ERROR | Runtime errors that don't require immediate action | Failed API requests, validation errors |
+| CRITICAL | Critical conditions | Payment gateway unavailable |
+| ALERT | Action must be taken immediately | Security breaches |
+| EMERGENCY | System is unusable | Critical security issues |
+
+## Basic Logging Examples
+
+Here are some examples of TTpay logging:
+
+### Payment Creation
+
+```php
+Log::channel('ttpay')->info('Payment created', [
+    'payment_id' => $payment->id,
+    'amount' => $payment->amount,
+    'currency' => $payment->currency,
+    'status' => $payment->status,
+]);
+```
+
+### API Request
+
+```php
+Log::channel('ttpay')->debug('Sending API request', [
+    'method' => $method,
+    'endpoint' => $endpoint,
+    'payload' => $this->sanitizeData($payload),
+]);
+```
+
+### API Response
+
+```php
+Log::channel('ttpay')->debug('API response received', [
+    'status_code' => $response->getStatusCode(),
+    'response_body' => $this->sanitizeData($responseBody),
+]);
+```
+
+### Error Logging
+
+```php
+Log::channel('ttpay')->error('Payment processing error', [
+    'payment_id' => $payment->id,
+    'error' => $exception->getMessage(),
+    'trace' => $exception->getTraceAsString(),
+]);
+```
+
+## Sensitive Data Handling
+
+TTpay automatically sanitizes sensitive data in logs:
+
+```php
+protected function sanitizeData(array $data): array
+{
+    $sensitiveFields = config('ttpay.logging.sensitive_fields', [
+        'card_number',
+        'cvv',
+        'password',
+        'secret',
+        'token',
+    ]);
+    
+    $sanitized = [];
+    
+    foreach ($data as $key => $value) {
+        if (in_array($key, $sensitiveFields)) {
+            $sanitized[$key] = '[REDACTED]';
+        } elseif (is_array($value)) {
+            $sanitized[$key] = $this->sanitizeData($value);
+        } else {
+            $sanitized[$key] = $value;
+        }
+    }
+    
+    return $sanitized;
+}
+```
+
+## Custom Log Contexts
+
+TTpay adds useful context to all log entries:
+
+```php
+Log::withContext([
+    'request_id' => $requestId,
+    'user_id' => auth()->id(),
+    'ip_address' => request()->ip(),
+]);
+```
+
+## Payment Lifecycle Logging
+
+TTpay logs the entire payment lifecycle:
+
+```php
+// Payment creation
+Log::channel('ttpay')->info('Payment initiated', [
+    'payment_id' => $payment->id,
+    'amount' => $payment->amount,
+    'currency' => $payment->currency,
+]);
+
+// Payment gateway response
+Log::channel('ttpay')->info('Payment gateway response', [
+    'payment_id' => $payment->id,
+    'status' => $response['status'],
+    'gateway_reference' => $response['id'],
+]);
+
+// Payment status update
+Log::channel('ttpay')->info('Payment status changed', [
+    'payment_id' => $payment->id,
+    'previous_status' => $previousStatus,
+    'new_status' => $newStatus,
+]);
+
+// Payment completion
+Log::channel('ttpay')->notice('Payment completed', [
+    'payment_id' => $payment->id,
+    'amount' => $payment->amount,
+    'currency' => $payment->currency,
+    'completion_time' => now()->toIso8601String(),
+]);
+```
+
+## Callback Logging
+
+TTpay logs all incoming callbacks:
+
+```php
+// Callback received
+Log::channel('ttpay')->info('Payment callback received', [
+    'payment_id' => $request->input('paymentId'),
+    'status' => $request->input('status'),
+    'callback_data' => $this->sanitizeData($request->all()),
+]);
+
+// Callback validation
+Log::channel('ttpay')->debug('Callback signature validation', [
+    'payment_id' => $request->input('paymentId'),
+    'validation_result' => $isValid ? 'valid' : 'invalid',
+]);
+
+// Callback processing
+Log::channel('ttpay')->info('Payment callback processed', [
+    'payment_id' => $request->input('paymentId'),
+    'status' => $request->input('status'),
+    'processing_time' => now()->toIso8601String(),
+]);
+```
+
+## Refund Logging
+
+TTpay logs refund operations:
+
+```php
+// Refund initiated
+Log::channel('ttpay')->info('Refund initiated', [
+    'payment_id' => $payment->id,
+    'refund_id' => $refund->id,
+    'amount' => $refund->amount,
+    'currency' => $refund->currency,
+    'reason' => $refund->reason,
+]);
+
+// Refund response
+Log::channel('ttpay')->info('Refund response received', [
+    'payment_id' => $payment->id,
+    'refund_id' => $refund->id,
+    'status' => $response['status'],
+    'gateway_reference' => $response['id'],
+]);
+
+// Refund completion
+Log::channel('ttpay')->notice('Refund completed', [
+    'payment_id' => $payment->id,
+    'refund_id' => $refund->id,
+    'amount' => $refund->amount,
+    'currency' => $refund->currency,
+    'completion_time' => now()->toIso8601String(),
+]);
+```
+
+## Error and Exception Logging
+
+TTpay logs all errors and exceptions:
+
+```php
+try {
+    // Payment processing
+    $result = $paymentClient->processPayment($paymentData);
+    return $result;
+} catch (TTpayException $e) {
+    // Log TTpay-specific exception
+    Log::channel('ttpay')->error('TTpay exception', [
+        'message' => $e->getMessage(),
+        'code' => $e->getCode(),
+        'trace' => $e->getTraceAsString(),
+        'payment_data' => $this->sanitizeData($paymentData),
+    ]);
+    
+    throw $e;
+} catch (\Exception $e) {
+    // Log general exception
+    Log::channel('ttpay')->error('Unexpected exception', [
+        'message' => $e->getMessage(),
+        'code' => $e->getCode(),
+        'trace' => $e->getTraceAsString(),
+        'payment_data' => $this->sanitizeData($paymentData),
+    ]);
+    
+    throw new TTpayException('An unexpected error occurred during payment processing.', 0, $e);
+}
+```
+
+## Implementing Custom Logging
+
+You can extend TTpay's logging by implementing a custom logger:
+
+```php
+// app/Services/CustomTTpayLogger.php
+namespace App\Services;
+
+use Illuminate\Support\Facades\Log;
+use Mavrickdeveloper\Ttpay\Contracts\LoggerInterface;
+
+class CustomTTpayLogger implements LoggerInterface
+{
+    public function debug(string $message, array $context = []): void
+    {
+        $this->addCommonContext($context);
+        Log::channel('custom_ttpay')->debug($message, $context);
+    }
+    
+    public function info(string $message, array $context = []): void
+    {
+        $this->addCommonContext($context);
+        Log::channel('custom_ttpay')->info($message, $context);
+        
+        // Add custom notification for important events
+        if (isset($context['payment_id']) && str_contains($message, 'completed')) {
+            $this->sendNotification($message, $context);
+        }
+    }
+    
+    // Implement other methods...
+    
+    protected function addCommonContext(array &$context): void
+    {
+        $context['app_environment'] = app()->environment();
+        $context['timestamp'] = now()->toIso8601String();
+        $context['request_id'] = request()->header('X-Request-ID') ?? uniqid();
+        
+        // Add custom context as needed
+    }
+    
+    protected function sendNotification(string $message, array $context): void
+    {
+        // Send notification to Slack, email, etc.
+    }
+}
+```
+
+Then register your custom logger in a service provider:
+
+```php
+// app/Providers/AppServiceProvider.php
+public function register()
+{
+    $this->app->bind(
+        \Mavrickdeveloper\Ttpay\Contracts\LoggerInterface::class,
+        \App\Services\CustomTTpayLogger::class
+    );
+}
+```
+
+## Log Viewers
+
+You can use the following log viewers to monitor TTpay logs:
+
+### Laravel Built-in Log Viewer
+
+```bash
+tail -f storage/logs/ttpay-yyyy-mm-dd.log
+```
+
+### Artisan Commands
+
+TTpay includes custom Artisan commands for viewing logs:
+
+```bash
+# View recent payment logs
+php artisan ttpay:logs
+
+# View logs for a specific payment
+php artisan ttpay:logs --payment=pay_123456789
+
+# View error logs only
+php artisan ttpay:logs --level=error
+```
+
+### Laravel Log Viewer Package
+
+You can use the Laravel Log Viewer package to view logs in your browser:
+
+```bash
+composer require rap2hpoutre/laravel-log-viewer
+```
+
+Then add the route:
+
+```php
+Route::get('logs', '\Rap2hpoutre\LaravelLogViewer\LogViewerController@index')
+    ->middleware(['web', 'auth', 'admin']);
+```
+
+## Configuring Monitoring Alerts
+
+Set up monitoring alerts for critical TTpay events:
+
+```php
+// app/Providers/EventServiceProvider.php
+protected $listen = [
+    'Mavrickdeveloper\Ttpay\Events\PaymentFailed' => [
+        'App\Listeners\SendPaymentFailureAlert',
+    ],
+    'Mavrickdeveloper\Ttpay\Events\SuspiciousActivityDetected' => [
+        'App\Listeners\SendSecurityAlert',
+    ],
+];
+```
+
+Example alert listener:
+
+```php
+// app/Listeners/SendPaymentFailureAlert.php
+public function handle(PaymentFailed $event)
+{
+    if ($event->payment->amount > 1000) {
+        // Send high-value payment failure alert
+        Notification::route('slack', config('notifications.slack_webhook'))
+            ->notify(new HighValuePaymentFailedNotification($event->payment));
+    }
+    
+    // Log to external monitoring service
+    $this->monitoringService->logEvent('payment_failed', [
+        'payment_id' => $event->payment->id,
+        'amount' => $event->payment->amount,
+        'currency' => $event->payment->currency,
+        'error' => $event->error,
+    ]);
+}
+```
+
+## Integrating with External Logging Services
+
+TTpay can be integrated with external logging services:
+
+### Papertrail
+
+```php
+// config/logging.php
+'channels' => [
+    // ...
+    'ttpay_papertrail' => [
+        'driver' => 'monolog',
+        'level' => env('TTPAY_LOG_LEVEL', 'debug'),
+        'handler' => SyslogUdpHandler::class,
+        'handler_with' => [
+            'host' => env('PAPERTRAIL_URL'),
+            'port' => env('PAPERTRAIL_PORT'),
+            'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
+        ],
+    ],
+]
+```
+
+### Sentry
+
+```php
+// config/logging.php
+'channels' => [
+    // ...
+    'ttpay_sentry' => [
+        'driver' => 'sentry',
+        'level' => env('TTPAY_LOG_LEVEL', 'error'),
+    ],
+]
+```
+
+### CloudWatch
+
+```php
+// config/logging.php
+'channels' => [
+    // ...
+    'ttpay_cloudwatch' => [
+        'driver' => 'custom',
+        'via' => \App\Logging\CreateCloudWatchLogger::class,
+        'sdk' => [
+            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            'version' => 'latest',
+            'credentials' => [
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            ],
+        ],
+        'retention' => env('CLOUDWATCH_LOG_RETENTION', 14),
+        'group' => env('CLOUDWATCH_LOG_GROUP', 'ttpay'),
+        'stream' => env('CLOUDWATCH_LOG_STREAM', 'payments'),
+    ],
+]
+```
+
+## Creating a Log Dashboard
+
+You can create a custom dashboard for TTpay logs:
+
+```php
+// app/Http/Controllers/TTpayLogDashboardController.php
+public function index()
+{
+    $logs = $this->getLogs();
+    $stats = $this->getPaymentStats();
+    $recentErrors = $this->getRecentErrors();
+    
+    return view('ttpay.logs.dashboard', compact('logs', 'stats', 'recentErrors'));
+}
+
+protected function getLogs()
+{
+    if (!file_exists(storage_path('logs/ttpay.log'))) {
+        return [];
+    }
+    
+    $logContent = file_get_contents(storage_path('logs/ttpay.log'));
+    $logLines = explode("\n", $logContent);
+    $logLines = array_filter($logLines);
+    $logs = [];
+    
+    foreach (array_slice(array_reverse($logLines), 0, 100) as $line) {
+        if (preg_match('/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (\w+)\.(\w+): (.+)$/', $line, $matches)) {
+            $logs[] = [
+                'time' => $matches[1],
+                'level' => $matches[2],
+                'channel' => $matches[3],
+                'message' => $matches[4],
+            ];
+        }
+    }
+    
+    return $logs;
+}
+
+protected function getPaymentStats()
+{
+    return [
+        'total' => Payment::count(),
+        'completed' => Payment::where('status', 'completed')->count(),
+        'failed' => Payment::where('status', 'failed')->count(),
+        'pending' => Payment::where('status', 'pending')->count(),
+        'total_amount' => Payment::where('status', 'completed')->sum('amount'),
+        'recent' => Payment::latest()->take(10)->get(),
+    ];
+}
+
+protected function getRecentErrors()
+{
+    $errors = [];
+    
+    foreach ($this->getLogs() as $log) {
+        if ($log['level'] === 'ERROR') {
+            $errors[] = $log;
+        }
+    }
+    
+    return array_slice($errors, 0, 10);
+}
+```
+
+## Best Practices for Logging
+
+When using TTpay's logging system, follow these best practices:
+
+1. **Set Appropriate Log Level**: Use `debug` for development and `info` or `notice` for production
+2. **Rotate Logs**: Ensure log rotation is configured to prevent disk space issues
+3. **Monitor Errors**: Set up alerts for error-level logs
+4. **Sanitize Sensitive Data**: Always sanitize sensitive data before logging
+5. **Add Context**: Include relevant context in log entries (payment ID, order ID, etc.)
+6. **Use Structured Logging**: Use structured logging format for easier parsing
+7. **Regular Review**: Regularly review logs for patterns and issues
+
+## Conclusion
+
+TTpay's comprehensive logging and monitoring system helps you track payment activities, debug issues, and ensure security. By customizing the logging configuration and integrating with external monitoring services, you can build a robust payment processing system with full visibility into all operations.

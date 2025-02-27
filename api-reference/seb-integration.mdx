@@ -1,0 +1,442 @@
+---
+title: 'SEB Integration'
+description: 'Integrating with SEB payment gateway using TTpay'
+---
+
+# SEB Integration
+
+TTpay provides comprehensive integration with the SEB payment gateway, allowing you to process payments securely through SEB's Bookroy API. This document explains how to set up and use the SEB integration in your application.
+
+## Overview
+
+The SEB Bookroy API integration in TTpay allows you to:
+
+1. Create and process payments
+2. Check payment status
+3. Capture authorized payments
+4. Process refunds
+5. Cancel payments
+6. Register webhooks for callbacks
+
+## Configuration
+
+Configure the SEB integration in your `.env` file:
+
+```
+TTPAY_SEB_USERNAME=your_seb_username
+TTPAY_SEB_PASSWORD=your_seb_password
+TTPAY_SEB_API_URL=https://api.bookroy.com
+TTPAY_SEB_MODE=test
+```
+
+These environment variables are used in the TTpay configuration:
+
+```php
+// config/ttpay.php
+'seb' => [
+    'username' => env('TTPAY_SEB_USERNAME'),
+    'password' => env('TTPAY_SEB_PASSWORD'),
+    'api_url' => env('TTPAY_SEB_API_URL', 'https://api.bookroy.com'),
+    'mode' => env('TTPAY_SEB_MODE', 'test'),
+],
+```
+
+## Basic Usage
+
+### Initialize the Payment Client
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+
+$paymentClient = new PaymentClient(
+    config('ttpay.seb.api_url'),
+    config('ttpay.seb.username'),
+    config('ttpay.seb.password')
+);
+```
+
+### Create a Payment
+
+```php
+$payment = $paymentClient->createPayment([
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ],
+    'paymentMethod' => 'card',
+    'description' => 'Order #123',
+    'callbackUrl' => 'https://example.com/callbacks',
+    'returnUrl' => 'https://example.com/payment-result',
+    'metadata' => [
+        'orderId' => '123456'
+    ]
+]);
+
+// Redirect to payment page
+return redirect($payment['redirectUrl']);
+```
+
+### Get Payment Details
+
+```php
+$paymentDetails = $paymentClient->getPayment($paymentId);
+
+// Process based on status
+if ($paymentDetails['status'] === 'COMPLETED') {
+    // Payment successful
+} elseif ($paymentDetails['status'] === 'FAILED') {
+    // Payment failed
+} elseif ($paymentDetails['status'] === 'PENDING') {
+    // Payment pending
+}
+```
+
+### Refund a Payment
+
+```php
+$refund = $paymentClient->refundPaymentBookroy($paymentId, [
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ],
+    'description' => 'Refund for order #123456'
+]);
+```
+
+### Cancel a Payment
+
+```php
+$cancellation = $paymentClient->cancelPaymentBookroy($paymentId);
+```
+
+### Capture an Authorized Payment
+
+```php
+$capture = $paymentClient->capturePaymentBookroy($paymentId, [
+    'amount' => [
+        'value' => 10.00,
+        'currency' => 'EUR'
+    ]
+]);
+```
+
+### Get Transaction Details
+
+```php
+$transaction = $paymentClient->getTransaction($transactionId);
+```
+
+### Register a Webhook
+
+```php
+$webhook = $paymentClient->registerWebhook('https://example.com/webhooks');
+```
+
+## Payment Request Fields
+
+When creating a payment, you can specify the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `amount.value` | float | Payment amount |
+| `amount.currency` | string | Payment currency (ISO 4217) |
+| `paymentMethod` | string | Payment method (card, bank, etc.) |
+| `description` | string | Payment description |
+| `callbackUrl` | string | URL for callback notifications |
+| `returnUrl` | string | URL to redirect after payment |
+| `metadata` | object | Additional metadata for reference |
+| `customer.email` | string | Customer email (optional) |
+| `customer.firstName` | string | Customer first name (optional) |
+| `customer.lastName` | string | Customer last name (optional) |
+| `customer.phone` | string | Customer phone (optional) |
+
+## Payment Response
+
+When creating a payment, you'll receive a response containing:
+
+```json
+{
+  "id": "pay_123456789",
+  "status": "PENDING",
+  "amount": {
+    "value": 10.00,
+    "currency": "EUR"
+  },
+  "description": "Order #123",
+  "metadata": {
+    "orderId": "123456"
+  },
+  "paymentMethod": "card",
+  "redirectUrl": "https://checkout.bookroy.com/pay/123456789",
+  "createdAt": "2023-04-15T12:34:56Z",
+  "expiresAt": "2023-04-15T13:34:56Z",
+  "transactions": []
+}
+```
+
+## Payment Status
+
+The SEB Bookroy API uses the following payment statuses:
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Payment is pending processing |
+| `AUTHORIZED` | Payment is authorized but not captured |
+| `COMPLETED` | Payment is completed successfully |
+| `FAILED` | Payment has failed |
+| `CANCELLED` | Payment was cancelled |
+| `EXPIRED` | Payment request has expired |
+| `REFUNDED` | Payment was refunded (fully or partially) |
+
+## Handling Callbacks
+
+The SEB Bookroy API sends webhooks to notify your application about payment status changes:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\CallbackHandler;
+
+public function handleSebCallback(Request $request)
+{
+    $callbackHandler = new CallbackHandler(config('ttpay.seb.webhook_secret'));
+    
+    // Get the signature from header
+    $signature = $request->header('X-SEB-Signature');
+    
+    // Validate the signature
+    if (!$callbackHandler->validateCallbackSignature($request->all(), $signature)) {
+        return response()->json(['error' => 'Invalid signature'], 403);
+    }
+    
+    // Process the notification
+    $paymentId = $request->input('paymentId');
+    $status = $request->input('status');
+    
+    // Update your database based on the payment status
+    $order = Order::where('payment_id', $paymentId)->first();
+    
+    if ($order) {
+        if ($status === 'COMPLETED') {
+            $order->update(['status' => 'paid']);
+            
+            // Generate invoice
+            // ...
+        } elseif ($status === 'FAILED') {
+            $order->update(['status' => 'failed']);
+        }
+    }
+    
+    return response()->json(['status' => 'success']);
+}
+```
+
+## Transaction Types
+
+The SEB Bookroy API supports several transaction types:
+
+| Type | Description |
+|------|-------------|
+| `PAYMENT` | Standard payment transaction |
+| `REFUND` | Refund transaction |
+| `CAPTURE` | Capture transaction for authorized payment |
+| `CANCEL` | Cancellation transaction for authorized payment |
+
+## Security Considerations
+
+When implementing the SEB integration, consider these security measures:
+
+1. **Store Credentials Securely**: Keep your SEB API credentials in environment variables
+2. **Validate Callbacks**: Always verify the signature of callback notifications
+3. **Use HTTPS**: Ensure all communication uses HTTPS
+4. **Log Transactions**: Keep detailed logs of all payment transactions
+5. **Implement Timeout Handling**: Handle cases where payment confirmation is delayed
+
+## Complete Payment Flow Example
+
+Here's a complete example of a payment flow using the SEB integration:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+use Mavrickdeveloper\Ttpay\Clients\Payment\CallbackHandler;
+
+class SebPaymentController extends Controller
+{
+    protected $paymentClient;
+    
+    public function __construct()
+    {
+        $this->paymentClient = new PaymentClient(
+            config('ttpay.seb.api_url'),
+            config('ttpay.seb.username'),
+            config('ttpay.seb.password')
+        );
+    }
+    
+    public function checkout(Request $request)
+    {
+        // Validate request
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'description' => 'required|string|max:255',
+        ]);
+        
+        // Create order in your database
+        $order = Order::create([
+            'user_id' => auth()->id(),
+            'amount' => $validated['amount'],
+            'description' => $validated['description'],
+            'status' => 'pending',
+        ]);
+        
+        // Create payment with SEB
+        try {
+            $payment = $this->paymentClient->createPayment([
+                'amount' => [
+                    'value' => (float) $validated['amount'],
+                    'currency' => 'EUR'
+                ],
+                'paymentMethod' => 'card',
+                'description' => $validated['description'],
+                'callbackUrl' => route('payments.seb.callback'),
+                'returnUrl' => route('payments.seb.return', ['order_id' => $order->id]),
+                'metadata' => [
+                    'orderId' => $order->id
+                ],
+                'customer' => [
+                    'email' => auth()->user()->email,
+                    'firstName' => auth()->user()->first_name,
+                    'lastName' => auth()->user()->last_name,
+                ]
+            ]);
+            
+            // Update order with payment ID
+            $order->update([
+                'payment_id' => $payment['id'],
+                'payment_url' => $payment['redirectUrl'],
+            ]);
+            
+            // Redirect to payment page
+            return redirect($payment['redirectUrl']);
+            
+        } catch (\Exception $e) {
+            // Log error
+            Log::error('SEB payment creation failed', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+            ]);
+            
+            // Update order status
+            $order->update(['status' => 'failed']);
+            
+            // Redirect with error
+            return redirect()->route('checkout')
+                ->with('error', 'Unable to initialize payment. Please try again.');
+        }
+    }
+    
+    public function handleReturn(Request $request, $orderId)
+    {
+        $order = Order::findOrFail($orderId);
+        
+        // Check payment status
+        try {
+            $paymentDetails = $this->paymentClient->getPayment($order->payment_id);
+            
+            if ($paymentDetails['status'] === 'COMPLETED') {
+                return redirect()->route('orders.show', $order->id)
+                    ->with('success', 'Payment completed successfully!');
+            } elseif ($paymentDetails['status'] === 'PENDING') {
+                return redirect()->route('orders.show', $order->id)
+                    ->with('info', 'Payment is still processing. We will notify you when it completes.');
+            } else {
+                return redirect()->route('orders.show', $order->id)
+                    ->with('error', 'Payment was not successful. Please try again.');
+            }
+        } catch (\Exception $e) {
+            Log::error('Error checking payment status', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+            ]);
+            
+            return redirect()->route('orders.show', $order->id)
+                ->with('error', 'Unable to verify payment status. Please contact support.');
+        }
+    }
+    
+    public function handleCallback(Request $request)
+    {
+        // Log the callback for debugging
+        Log::info('SEB callback received', $request->all());
+        
+        $callbackHandler = new CallbackHandler(config('ttpay.seb.webhook_secret'));
+        
+        // Get the signature from header
+        $signature = $request->header('X-SEB-Signature');
+        
+        // Validate the signature
+        if (!$callbackHandler->validateCallbackSignature($request->all(), $signature)) {
+            Log::warning('Invalid SEB callback signature', [
+                'data' => $request->all(),
+                'signature' => $signature,
+            ]);
+            
+            return response()->json(['error' => 'Invalid signature'], 403);
+        }
+        
+        // Process the notification
+        $paymentId = $request->input('paymentId');
+        $status = $request->input('status');
+        
+        // Update order status
+        $order = Order::where('payment_id', $paymentId)->first();
+        
+        if (!$order) {
+            Log::warning('SEB callback for unknown order', [
+                'payment_id' => $paymentId,
+            ]);
+            
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+        
+        // Update order based on payment status
+        switch ($status) {
+            case 'COMPLETED':
+                $order->update(['status' => 'paid']);
+                
+                // Generate invoice
+                $this->generateInvoice($order);
+                
+                // Notify customer
+                $order->user->notify(new PaymentCompleted($order));
+                break;
+                
+            case 'FAILED':
+                $order->update(['status' => 'failed']);
+                break;
+                
+            case 'CANCELLED':
+                $order->update(['status' => 'cancelled']);
+                break;
+                
+            case 'REFUNDED':
+                $order->update(['status' => 'refunded']);
+                break;
+                
+            default:
+                // Keep existing status
+                break;
+        }
+        
+        return response()->json(['status' => 'success']);
+    }
+    
+    protected function generateInvoice(Order $order)
+    {
+        // Invoice generation logic
+        // ...
+    }
+}
+```
+
+## Conclusion
+
+TTpay's integration with the SEB Bookroy API provides a comprehensive solution for processing payments through SEB. By following the examples in this document, you can quickly implement secure payment processing in your application.
