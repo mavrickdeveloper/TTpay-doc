@@ -1,0 +1,195 @@
+---
+title: 'Installation'
+description: 'Getting started with TTpay in your Laravel application'
+---
+
+# Installing TTpay
+
+This guide will walk you through the process of installing and configuring TTpay in your Laravel application.
+
+## Requirements
+
+Before installing TTpay, ensure your environment meets the following requirements:
+
+- PHP 8.1 or higher
+- Laravel 9.0 or higher
+- Composer
+- MySQL 5.7+ or PostgreSQL 9.6+
+- Node.js and NPM (for asset compilation)
+
+## Installation Steps
+
+### 1. Install the Package
+
+Install the TTpay package via Composer:
+
+```bash
+composer require mavrickdeveloper/ttpay
+```
+
+### 2. Publish the Assets
+
+Publish the package assets, configuration, and migrations:
+
+```bash
+php artisan vendor:publish --provider="Mavrickdeveloper\Ttpay\TTpayServiceProvider"
+```
+
+If you want to publish only specific assets:
+
+```bash
+# Publish only configuration
+php artisan vendor:publish --tag="ttpay-config"
+
+# Publish only migrations
+php artisan vendor:publish --tag="ttpay-migrations"
+
+# Publish only views
+php artisan vendor:publish --tag="ttpay-views"
+
+# Publish only assets
+php artisan vendor:publish --tag="ttpay-assets"
+```
+
+### 3. Run Migrations
+
+Run the migrations to create the necessary database tables:
+
+```bash
+php artisan migrate
+```
+
+### 4. Configure Environment Variables
+
+Add the following environment variables to your `.env` file:
+
+```env
+# TTpay Configuration
+TTPAY_CURRENCY=EUR
+TTPAY_PDF_LOGO=/images/logo.png
+TTPAY_COMPANY_NAME="Your Company Name"
+TTPAY_COMPANY_ADDRESS="Your Company Address"
+TTPAY_COMPANY_ZIP="12345"
+TTPAY_COMPANY_CITY="Your City"
+TTPAY_COMPANY_COUNTRY="Your Country"
+TTPAY_COMPANY_VAT="VAT123456789"
+TTPAY_COMPANY_REG_NUMBER="REG123456789"
+TTPAY_COMPANY_PHONE="+1234567890"
+TTPAY_COMPANY_EMAIL="company@example.com"
+TTPAY_COMPANY_WEBSITE="https://example.com"
+
+# RIK e-Financials API Configuration (if using e-invoices)
+TTPAY_RIK_USERNAME=your-rik-username
+TTPAY_RIK_PASSWORD=your-rik-password
+TTPAY_RIK_API_KEY=your-rik-api-key
+TTPAY_RIK_API_URL=https://demo-rmp-api.rik.ee/v1
+```
+
+### 5. Configure the Package
+
+Open the published configuration file at `config/ttpay.php` and customize it according to your needs:
+
+```php
+return [
+    // General configuration
+    'currency' => env('TTPAY_CURRENCY', 'EUR'),
+    'pdf_logo' => env('TTPAY_PDF_LOGO', '/images/logo.png'),
+    
+    // Company information
+    'company' => [
+        'name' => env('TTPAY_COMPANY_NAME', 'Your Company Name'),
+        'address' => env('TTPAY_COMPANY_ADDRESS', 'Your Company Address'),
+        'zip' => env('TTPAY_COMPANY_ZIP', '12345'),
+        'city' => env('TTPAY_COMPANY_CITY', 'Your City'),
+        'country' => env('TTPAY_COMPANY_COUNTRY', 'Your Country'),
+        'vat' => env('TTPAY_COMPANY_VAT', 'VAT123456789'),
+        'reg_number' => env('TTPAY_COMPANY_REG_NUMBER', 'REG123456789'),
+        'phone' => env('TTPAY_COMPANY_PHONE', '+1234567890'),
+        'email' => env('TTPAY_COMPANY_EMAIL', 'company@example.com'),
+        'website' => env('TTPAY_COMPANY_WEBSITE', 'https://example.com'),
+    ],
+    
+    // RIK e-Financials API configuration
+    'rik' => [
+        'username' => env('TTPAY_RIK_USERNAME'),
+        'password' => env('TTPAY_RIK_PASSWORD'),
+        'api_key' => env('TTPAY_RIK_API_KEY'),
+        'api_url' => env('TTPAY_RIK_API_URL', 'https://demo-rmp-api.rik.ee/v1'),
+    ],
+];
+```
+
+### 6. Set Up Routes
+
+The package automatically registers its routes through the service provider. By default, they are accessible under the `/ttpay` prefix.
+
+If you need to customize the routes, you can publish the route files and modify them:
+
+```bash
+php artisan vendor:publish --tag="ttpay-routes"
+```
+
+### 7. Configure Filament (for Admin Panel)
+
+If you're using the Filament admin panel, TTpay will automatically register its resources. Ensure you have Filament properly installed and configured:
+
+```bash
+php artisan filament:install
+```
+
+## Verifying the Installation
+
+To verify that TTpay is installed correctly, you can run the installation command:
+
+```bash
+php artisan ttpay:install
+```
+
+This command will:
+
+1. Check that all required dependencies are installed
+2. Verify that the database tables exist
+3. Validate configuration settings
+4. Create the necessary storage directories
+
+## Next Steps
+
+Once you have installed TTpay, you can:
+
+1. [Configure Invoice Templates](/essentials/invoice-templates)
+2. [Set Up Payment Providers](/essentials/payment-providers)
+3. [Customize Admin Panel](/essentials/admin-panel)
+4. [Enable E-Invoicing](/essentials/e-invoicing)
+
+## Troubleshooting
+
+### Common Issues
+
+#### Migrations Not Found
+
+If the migrations are not found, ensure that you have published them:
+
+```bash
+php artisan vendor:publish --tag="ttpay-migrations"
+```
+
+#### Assets Not Loading
+
+If the assets are not loading, try republishing them and clearing the cache:
+
+```bash
+php artisan vendor:publish --tag="ttpay-assets" --force
+php artisan optimize:clear
+```
+
+#### API Connections Failing
+
+If connections to the RIK e-Financials API are failing, verify your credentials in the `.env` file and check connectivity to the API server.
+
+### Getting Help
+
+If you encounter issues during installation, you can:
+
+- Check the [Troubleshooting Guide](/essentials/troubleshooting)
+- Open an issue on the [GitHub repository](https://github.com/mavrickdeveloper/ttpay/issues)
+- Reach out to support at support@example.com

@@ -1,0 +1,309 @@
+---
+title: 'Package Structure'
+description: 'Understanding the TTpay package organization and components'
+---
+
+# Package Structure
+
+TTpay follows a well-organized, modular structure adhering to Laravel package development best practices. This document provides an overview of the package organization to help you navigate and understand its components.
+
+## Directory Organization
+
+The package follows a standard Laravel package structure:
+
+```
+Ttpay/
+├── config/               # Package configuration
+├── database/             # Migrations and seeders
+│   └── migrations/       # Database structure
+├── resources/            # Views and assets
+│   ├── views/            # Blade templates
+│   └── assets/           # JS, CSS, and images
+├── routes/               # Route definitions
+│   ├── web.php           # Web routes
+│   └── api.php           # API routes
+├── src/                  # Source code
+│   ├── Clients/          # API client implementations
+│   ├── Commands/         # Artisan commands
+│   ├── Contracts/        # Interfaces
+│   ├── Enums/            # Enumeration classes
+│   ├── Exceptions/       # Custom exceptions
+│   ├── Facades/          # Laravel facades
+│   ├── Filament/         # Admin panel resources
+│   ├── Http/             # Controllers and requests
+│   ├── Models/           # Eloquent models
+│   ├── Services/         # Service classes
+│   └── TTpayServiceProvider.php  # Service provider
+└── tests/                # Test suite
+```
+
+## Key Components
+
+### Models
+
+The core data models of the package:
+
+- **Order** (`src/Models/Order.php`): Represents customer orders
+- **Invoice** (`src/Models/Invoice.php`): Manages invoice data with comprehensive attributes
+- **Einvoice** (`src/Models/Einvoice.php`): Handles electronic invoice functionality
+- **Payment** (`src/Models/Payment.php`): Tracks payment transactions
+
+### Services
+
+Service classes that implement business logic:
+
+- **InvoicePdfService** (`src/Services/InvoicePdfService.php`): Generates PDF invoices
+- **EinvoiceService**: Handles electronic invoice operations
+- **PaymentService**: Processes payments through various providers
+
+### Controllers
+
+Controllers that handle HTTP requests:
+
+- **PaymentController**: Processes payment requests
+- **PaymentCallbackController**: Handles callbacks from payment processors
+- **RikApiTesterController**: Provides a UI for testing the RIK e-Financials API
+- **SebApiTesterController**: Testing interface for SEB bank API
+
+### API Clients
+
+Client classes for external API integration:
+
+- **PaymentClient**: Interface with payment providers
+- **InvoiceClient**: Client for invoice-related external services
+- **RIK e-Financials client**: Communication with RIK e-Financials API
+
+### Service Provider
+
+The `TTpayServiceProvider.php` registers all package components with Laravel:
+
+```php
+class TTpayServiceProvider extends PackageServiceProvider
+{
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('ttpay')
+            ->hasConfigFile() // Publishes config/ttpay.php
+            ->hasViews()
+            ->hasMigrations()
+            ->hasCommands($this->getCommands())
+            ->hasRoutes(['web', 'api']);
+    }
+
+    // Registration of Filament resources, views, services, etc.
+}
+```
+
+## Configuration
+
+The package configuration file (`config/ttpay.php`) includes settings for:
+
+- Company information for invoices
+- Currency and formatting options
+- API credentials for RIK e-Financials
+- Payment provider settings
+- UI customization options
+
+## Migrations
+
+Database migrations define the schema for:
+
+- Orders table
+- Invoices table
+- E-invoices table
+- Payments table
+- Foreign key relationships
+
+## Routes
+
+The package defines routes in two files:
+
+- **web.php**: Web routes for the admin interface and API testing tools
+- **api.php**: API endpoints for programmatic interaction with the package
+
+# Filament Resources and Admin Panel
+
+TTpay includes a comprehensive admin panel built with Filament, providing a beautiful interface for managing all aspects of payments and invoices.
+
+## Filament Resources
+
+### Order Resource
+
+The `OrderResource` (`src/Filament/Resources/OrderResource.php`) provides management for customer orders:
+
+- **List Page**: Displays all orders with filtering and sorting
+- **Create Page**: Form for creating new orders with dynamic line items
+- **Edit Page**: Update existing orders
+- **Actions**: Generate invoices, process payments, cancel orders
+
+```php
+class OrderResource extends Resource
+{
+    protected static ?string $model = Order::class;
+    protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Form definition, table configuration, and actions
+}
+```
+
+### Invoice Resource
+
+The `InvoiceResource` (`src/Filament/Resources/InvoiceResource.php`) manages invoices with comprehensive features:
+
+- **List Page**: View all invoices with advanced filtering
+- **Create Page**: Generate new invoices with customer information and line items
+- **Edit Page**: Update invoice details
+- **View Page**: Detailed invoice information
+- **Actions**: Generate PDF, send to customer, mark as paid, create e-invoice
+
+```php
+class InvoiceResource extends Resource
+{
+    protected static ?string $model = Invoice::class;
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Advanced form with conditional logic, PDF generation
+}
+```
+
+Key features:
+- Dynamic line item management
+- Tax calculation
+- PDF generation and preview
+- Customer and billing information management
+- Payment status tracking
+
+### E-Invoice Resource
+
+The `EinvoiceResource` (`src/Filament/Resources/EinvoiceResource.php`) handles electronic invoices:
+
+- Integration with RIK e-Financials API
+- XML generation and validation
+- Delivery status tracking
+- E-invoice history
+
+```php
+class EinvoiceResource extends Resource
+{
+    protected static ?string $model = Einvoice::class;
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // E-invoice specific functionality
+}
+```
+
+### Payment Resource
+
+The `PaymentResource` (`src/Filament/Resources/PaymentResource.php`) provides payment management:
+
+- **List Page**: All payments with status filtering
+- **Create Page**: Manual payment entry
+- **Edit Page**: Update payment details
+- **View Page**: Detailed payment information
+- **Payment Reports Page**: Comprehensive payment reports and analytics
+
+```php
+class PaymentResource extends Resource
+{
+    protected static ?string $model = Payment::class;
+    protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Payment management and reporting
+}
+```
+
+## Filament Widgets
+
+TTpay includes custom Filament widgets for dashboard analytics:
+
+### Payment Stats Widget
+
+The `PaymentStatsWidget` (`src/Filament/Resources/PaymentResource/Widgets/PaymentStatsWidget.php`) displays key payment metrics:
+
+- Total payments
+- Pending payments
+- Failed payments
+- Settled payments
+
+```php
+class PaymentStatsWidget extends BaseWidget
+{
+    protected function getStats(): array
+    {
+        return [
+            Stat::make('Total Payments', Payment::count())
+                ->description('Total number of payments')
+                ->chart([7, 3, 4, 5, 6, 3, 5, 3])
+                ->color('success'),
+            
+            // Additional stats for different payment statuses
+        ];
+    }
+}
+```
+
+## Filament Pages
+
+Custom pages extend the standard resource pages:
+
+### Payment Reports
+
+The `PaymentReports` page (`src/Filament/Resources/PaymentResource/Pages/PaymentReports.php`) provides:
+
+- Customizable date range filtering
+- Payment trends over time
+- Payment status breakdown
+- Payment method distribution
+- Total amount statistics
+- CSV export functionality
+
+```php
+class PaymentReports extends Page
+{
+    protected static string $resource = PaymentResource::class;
+    protected static string $view = 'ttpay::filament.resources.payment-resource.pages.payment-reports';
+    
+    // Advanced reporting functionality
+}
+```
+
+## Admin Panel Integration
+
+The TTpay admin panel seamlessly integrates with Laravel Filament:
+
+1. **Navigation**: Resources are grouped under the "Finance" category
+2. **Permissions**: Compatible with Filament's permission system
+3. **Themes**: Works with Filament's theming system
+4. **Responsiveness**: Fully responsive design for all device sizes
+5. **Actions**: Custom actions for common invoice and payment operations
+
+## Extending Filament Resources
+
+You can extend TTpay's Filament resources to customize them for your application:
+
+```php
+use Mavrickdeveloper\Ttpay\Filament\Resources\InvoiceResource as BaseInvoiceResource;
+
+class InvoiceResource extends BaseInvoiceResource
+{
+    // Override or extend functionality
+    
+    public static function form(Form $form): Form
+    {
+        $parentForm = parent::form($form);
+        
+        // Add custom fields or modify existing ones
+        
+        return $parentForm;
+    }
+}
+```
+
+## Conclusion
+
+TTpay's well-organized package structure and comprehensive Filament integration provide a solid foundation for payment and invoice management in Laravel applications. The modular design allows for easy customization and extension, while the Filament-powered admin panel offers a beautiful, intuitive interface for managing all aspects of the financial workflow.

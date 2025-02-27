@@ -1,0 +1,270 @@
+---
+title: 'Architecture'
+description: 'Understanding TTpay database and code architecture'
+---
+
+# TTpay Architecture
+
+TTpay is built with a robust, scalable architecture following Laravel best practices and SOLID principles. This document provides an overview of the database structure and code organization.
+
+## Database Architecture
+
+TTpay uses a relational database model with the following core tables:
+
+### Core Tables
+
+<img src="/images/database-diagram.svg" alt="TTpay Database Schema" />
+
+#### Orders
+
+The `orders` table is the starting point of the payment workflow. It stores:
+
+- Customer details
+- Order totals and items
+- Status tracking
+- Timestamps for audit trails
+
+```sql
+CREATE TABLE orders (
+    id bigint unsigned NOT NULL AUTO_INCREMENT,
+    order_number varchar(255) NOT NULL,
+    user_id bigint unsigned NULL,
+    customer_name varchar(255) NOT NULL,
+    customer_email varchar(255) NOT NULL,
+    status varchar(255) NOT NULL DEFAULT 'pending',
+    total decimal(10,2) NOT NULL,
+    items json NOT NULL,
+    created_at timestamp NULL DEFAULT NULL,
+    updated_at timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (id)
+);
+```
+
+#### Invoices
+
+The `invoices` table stores detailed invoice information:
+
+- Complete customer and billing details
+- Line items and financial calculations
+- PDF paths for generated invoices
+- Payment tracking
+- Various metadata for financial reporting
+
+```sql
+CREATE TABLE invoices (
+    id bigint unsigned NOT NULL AUTO_INCREMENT,
+    invoice_number varchar(255) NOT NULL,
+    reference_number varchar(255) NULL,
+    order_id bigint unsigned NULL,
+    user_id bigint unsigned NULL,
+    payment_id bigint unsigned NULL,
+    customer_name varchar(255) NOT NULL,
+    customer_email varchar(255) NOT NULL,
+    /* Additional customer and billing fields */
+    items json NOT NULL,
+    subtotal decimal(10,2) NOT NULL,
+    tax decimal(10,2) NOT NULL,
+    tax_rate decimal(5,2) NOT NULL,
+    total decimal(10,2) NOT NULL,
+    status varchar(255) NOT NULL DEFAULT 'draft',
+    currency varchar(3) NOT NULL DEFAULT 'EUR',
+    payment_method varchar(255) NULL,
+    payment_status varchar(255) NULL,
+    pdf_path varchar(255) NULL,
+    created_at timestamp NULL DEFAULT NULL,
+    updated_at timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (id)
+);
+```
+
+#### E-Invoices
+
+The `e_invoices` table extends the standard invoices with electronic invoice capabilities:
+
+- Integration with RIK e-Financials
+- XML storage and processing
+- E-invoice status tracking
+- Delivery details
+
+```sql
+CREATE TABLE e_invoices (
+    id bigint unsigned NOT NULL AUTO_INCREMENT,
+    invoice_id bigint unsigned NOT NULL,
+    user_id bigint unsigned NULL,
+    reference_number varchar(255) NULL,
+    status varchar(255) NOT NULL DEFAULT 'draft',
+    xml_content longtext NULL,
+    delivery_status varchar(255) NULL,
+    delivery_method varchar(255) NULL,
+    delivery_message text NULL,
+    created_at timestamp NULL DEFAULT NULL,
+    updated_at timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (id)
+);
+```
+
+#### Payments
+
+The `payments` table tracks all payment transactions:
+
+- Transaction details and references
+- Payment processor information
+- Status tracking
+- Amount and currency information
+
+```sql
+CREATE TABLE payments (
+    id bigint unsigned NOT NULL AUTO_INCREMENT,
+    payment_id varchar(255) NOT NULL,
+    invoice_id bigint unsigned NULL,
+    user_id bigint unsigned NULL,
+    amount decimal(10,2) NOT NULL,
+    currency varchar(3) NOT NULL DEFAULT 'EUR',
+    status varchar(255) NOT NULL DEFAULT 'pending',
+    payment_method varchar(255) NOT NULL,
+    transaction_id varchar(255) NULL,
+    processor_response json NULL,
+    created_at timestamp NULL DEFAULT NULL,
+    updated_at timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (id)
+);
+```
+
+### Relationships
+
+TTpay implements a comprehensive relational database design:
+
+- An **Order** can have multiple **Invoices**
+- An **Invoice** belongs to an **Order** and can have one **Payment**
+- An **Invoice** can have one **E-Invoice**
+- **Payments** are linked to **Invoices**
+- All entities can be associated with **Users** for multi-tenant setups
+
+## Code Architecture
+
+TTpay follows a modular, service-oriented architecture to ensure scalability and maintainability.
+
+### Directory Structure
+
+```
+Ttpay/
+├── config/               # Package configuration
+├── database/             # Migrations and seeders
+│   └── migrations/       # Database structure
+├── resources/            # Views and assets
+│   ├── views/            # Blade templates
+│   └── assets/           # JS, CSS, and images
+├── routes/               # Route definitions
+│   ├── web.php           # Web routes
+│   └── api.php           # API routes
+├── src/                  # Source code
+│   ├── Clients/          # API client implementations
+│   ├── Commands/         # Artisan commands
+│   ├── Contracts/        # Interfaces
+│   ├── Enums/            # Enumeration classes
+│   ├── Exceptions/       # Custom exceptions
+│   ├── Facades/          # Laravel facades
+│   ├── Filament/         # Admin panel resources
+│   ├── Http/             # Controllers and requests
+│   ├── Models/           # Eloquent models
+│   ├── Services/         # Service classes
+│   └── TTpayServiceProvider.php  # Service provider
+└── tests/                # Test suite
+```
+
+### Key Components
+
+#### Service Provider
+
+The `TTpayServiceProvider` is the central component that registers all package resources:
+
+- Routes, views, and configuration
+- Service and facade bindings
+- Filament resources
+- Commands and middleware
+
+#### Models
+
+Models implement Eloquent relationships and business logic:
+
+- `Order` - Represents customer orders
+- `Invoice` - Manages invoice data and generation
+- `Einvoice` - Handles electronic invoice functionality
+- `Payment` - Tracks payment transactions
+
+#### Controllers
+
+Controllers handle HTTP requests and implement business logic:
+
+- `PaymentController` - Processes payment requests
+- `PaymentCallbackController` - Handles payment provider callbacks
+- `RikApiTesterController` - Provides a UI for testing RIK e-Financials API
+
+#### Services
+
+Service classes implement core business logic:
+
+- `InvoicePdfService` - Generates PDF invoices
+- Payment processing services
+- E-invoice services
+
+#### API Clients
+
+Dedicated client classes for external API integration:
+
+- `PaymentClient` - Interface with payment providers
+- RIK e-Financials client
+
+#### Filament Resources
+
+Admin panel components built with Filament:
+
+- `OrderResource` - Manage orders
+- `InvoiceResource` - Create and manage invoices
+- `EinvoiceResource` - Handle electronic invoices
+- `PaymentResource` - Track and manage payments
+
+## API Integration
+
+TTpay includes integration with external APIs:
+
+### RIK e-Financials API
+
+- Complete Swagger UI interface for API exploration
+- API specification loaded dynamically from YAML file
+- Authentication header generation
+- Test request functionality
+
+### Payment Provider APIs
+
+- Standardized interface for multiple payment providers
+- Secure transaction processing
+- Webhook handling for payment status updates
+
+## Scalability Features
+
+TTpay is designed for scalability:
+
+1. **Database Optimizations**
+   - Indexed fields for fast lookups
+   - Efficient relationship design
+   - JSON columns for flexible data storage
+
+2. **Performance Considerations**
+   - Eager loading to prevent N+1 queries
+   - Database transaction support
+   - Caching for frequently accessed data
+
+3. **Modular Architecture**
+   - Independent components
+   - Interface-based design
+   - Dependency injection
+
+4. **Extensibility**
+   - Hook points for custom functionality
+   - Event-driven architecture
+   - Clear documentation for extension
+
+## Conclusion
+
+TTpay's architecture is built with scalability, maintainability, and reliability in mind. By following Laravel best practices and implementing a service-oriented design, the package provides a robust foundation for payment and invoice management in any Laravel application.

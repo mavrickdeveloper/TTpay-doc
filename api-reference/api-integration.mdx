@@ -1,0 +1,274 @@
+---
+title: 'API Integration'
+description: 'Integrating with TTpay APIs and external services'
+---
+
+# API Integration
+
+TTpay offers robust API integration capabilities, allowing seamless connection with external payment providers and financial systems. This document outlines the available API integrations and how to use them effectively.
+
+## RIK e-Financials Integration
+
+TTpay provides comprehensive integration with the RIK e-Financials API for electronic invoicing.
+
+### RIK API Tester
+
+The package includes a built-in Swagger UI interface for testing and exploring the RIK e-Financials API:
+
+```php
+// RikApiTesterController.php
+public function index()
+{
+    // Get credentials from config
+    $apiKeyId = config('ttpay.rik.username');
+    $apiKeyPublicValue = config('ttpay.rik.api_key');
+    $apiKeyPassword = config('ttpay.rik.password');
+    
+    // Generate default headers for a generic request
+    $defaultRequestUrl = '/clients'; // Default request path
+    $headers = $this->generateAuthorizationHeader(
+        $apiKeyId, 
+        $apiKeyPublicValue, 
+        $apiKeyPassword, 
+        $defaultRequestUrl
+    );
+    
+    return view('ttpay::rik-api-tester', [
+        'defaultHeaders' => $headers,
+        'apiKeyId' => $apiKeyId,
+        'apiKeyPublicValue' => $apiKeyPublicValue,
+        'apiKeyPassword' => $apiKeyPassword
+    ]);
+}
+```
+
+Key features of the RIK API tester:
+
+- **Dynamic API Specification**: The API specification is loaded from `src/rik.yaml` using Symfony's YAML parser, ensuring all endpoints are automatically available in the UI.
+- **Authentication Header Generation**: Automatically creates the required authentication headers for API requests.
+- **Interactive Testing**: Test requests directly from the UI with parameter customization.
+- **Response Visualization**: Format and display API responses in a readable format.
+
+### Using the RIK API Tester
+
+1. Navigate to the `/ttpay/rik-api-tester` route in your application
+2. Select an endpoint from the Swagger UI interface
+3. Customize parameters as needed
+4. Send the request to see the live response
+5. Use the response data to inform your implementation
+
+### E-Invoice Integration
+
+TTpay uses the RIK e-Financials API to generate and manage electronic invoices:
+
+- Create e-invoices from standard invoices
+- Send e-invoices to customers through various delivery methods
+- Track e-invoice status and delivery
+- Store XML representations of e-invoices
+
+## Payment Provider Integration
+
+TTpay supports integration with multiple payment providers through a standardized interface:
+
+### Payment Client
+
+The `PaymentClient` class provides a unified interface for interacting with different payment providers:
+
+```php
+// Example usage of the PaymentClient
+$paymentClient = new PaymentClient();
+$response = $paymentClient->processPayment($invoice, $paymentMethod, $amount);
+```
+
+### Supported Payment Methods
+
+TTpay supports various payment methods:
+
+- Credit/Debit Cards
+- Bank Transfers
+- Online Payment Systems
+- Invoice-based Payments
+
+### Payment Webhooks
+
+TTpay includes a webhook handler for processing payment provider callbacks:
+
+```php
+// PaymentCallbackController.php
+public function handleCallback(Request $request, string $provider)
+{
+    // Validate the callback request
+    $this->validateCallback($request, $provider);
+    
+    // Process the payment status update
+    $payment = $this->processCallback($request, $provider);
+    
+    // Return appropriate response based on provider
+    return $this->generateResponse($payment, $provider);
+}
+```
+
+Payment callbacks handle:
+- Payment status updates
+- Transaction verification
+- Fraud detection responses
+- Error handling
+
+## API Endpoints
+
+TTpay provides RESTful API endpoints for programmatic interaction with the package:
+
+### Order API
+
+Endpoints for managing orders:
+
+- `GET /api/ttpay/orders` - List all orders
+- `GET /api/ttpay/orders/{id}` - Get a specific order
+- `POST /api/ttpay/orders` - Create a new order
+- `PUT /api/ttpay/orders/{id}` - Update an order
+- `DELETE /api/ttpay/orders/{id}` - Delete an order
+
+### Invoice API
+
+Endpoints for invoice management:
+
+- `GET /api/ttpay/invoices` - List all invoices
+- `GET /api/ttpay/invoices/{id}` - Get a specific invoice
+- `POST /api/ttpay/invoices` - Create a new invoice
+- `PUT /api/ttpay/invoices/{id}` - Update an invoice
+- `POST /api/ttpay/invoices/{id}/generate-pdf` - Generate a PDF for an invoice
+- `POST /api/ttpay/invoices/{id}/send` - Send an invoice to a customer
+
+### Payment API
+
+Endpoints for payment processing:
+
+- `GET /api/ttpay/payments` - List all payments
+- `GET /api/ttpay/payments/{id}` - Get a specific payment
+- `POST /api/ttpay/payments` - Create a new payment
+- `POST /api/ttpay/payments/process` - Process a payment
+- `GET /api/ttpay/payments/status/{id}` - Check payment status
+
+## Authentication and Security
+
+API endpoints are secured using Laravel's authentication middleware:
+
+- Bearer token authentication
+- CSRF protection for web routes
+- Rate limiting to prevent abuse
+- Request validation for data integrity
+
+### API Authentication
+
+To authenticate with the TTpay API:
+
+```php
+// Example API request with authentication
+$response = Http::withToken('your-api-token')
+    ->post('https://your-app.com/api/ttpay/payments/process', [
+        'invoice_id' => 123,
+        'amount' => 100.00,
+        'payment_method' => 'credit_card',
+        // Additional parameters...
+    ]);
+```
+
+## Working with External APIs
+
+TTpay is designed to work seamlessly with external APIs while maintaining a clean abstraction layer:
+
+### API Client Design Pattern
+
+All external API interactions follow the client design pattern:
+
+```php
+// Generic pattern for API clients
+class ExternalServiceClient
+{
+    protected $config;
+    protected $httpClient;
+    
+    public function __construct(array $config)
+    {
+        $this->config = $config;
+        $this->httpClient = Http::withHeaders([
+            // Authentication headers...
+        ]);
+    }
+    
+    public function makeRequest(string $endpoint, array $data = [])
+    {
+        return $this->httpClient->post($this->config['base_url'] . $endpoint, $data);
+    }
+}
+```
+
+### Error Handling
+
+TTpay implements robust error handling for API interactions:
+
+```php
+try {
+    $response = $apiClient->makeRequest('/endpoint', $data);
+    
+    if ($response->failed()) {
+        throw new ApiException(
+            "API request failed: " . $response->body(),
+            $response->status()
+        );
+    }
+    
+    return $response->json();
+} catch (\Exception $e) {
+    Log::error('API Error: ' . $e->getMessage(), [
+        'data' => $data,
+        'trace' => $e->getTraceAsString()
+    ]);
+    
+    throw new ApiException(
+        "Failed to process API request: " . $e->getMessage(),
+        $e->getCode(),
+        $e
+    );
+}
+```
+
+## Extensibility
+
+TTpay's API integration is designed to be extensible:
+
+### Adding Custom Payment Providers
+
+You can add custom payment providers by implementing the payment provider interface:
+
+```php
+class CustomPaymentProvider implements PaymentProviderInterface
+{
+    public function processPayment(Invoice $invoice, array $paymentData): PaymentResponse
+    {
+        // Implementation for processing payments with your custom provider
+    }
+    
+    public function verifyCallback(Request $request): bool
+    {
+        // Implementation for verifying callbacks from your custom provider
+    }
+    
+    public function processCallback(Request $request): Payment
+    {
+        // Implementation for processing callbacks from your custom provider
+    }
+}
+```
+
+### Custom API Integrations
+
+Extend TTpay with your own API integrations:
+
+1. Create a new client class in your application
+2. Register the client in a service provider
+3. Use dependency injection to use your client where needed
+
+## Conclusion
+
+TTpay's comprehensive API integration capabilities make it a powerful solution for connecting your Laravel application with payment providers and financial systems. The package's clean abstractions and extensible design allow for seamless integration with existing systems while maintaining code quality and security.

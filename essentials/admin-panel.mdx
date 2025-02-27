@@ -1,0 +1,368 @@
+---
+title: 'Admin Panel'
+description: 'Understanding and customizing the TTpay Filament admin panel'
+---
+
+# Admin Panel
+
+TTpay comes with a powerful, feature-rich admin panel built using [Filament](https://filamentphp.com/), providing an intuitive interface for managing payments, invoices, orders, and e-invoices. This document explains the admin panel features and how to customize them for your needs.
+
+## Admin Panel Overview
+
+The TTpay admin panel integrates seamlessly with your existing Filament installation, adding finance-related resources under a dedicated "Finance" navigation group:
+
+![TTpay Admin Panel](/images/admin-panel-overview.png)
+
+### Key Features
+
+- **Beautiful UI**: Modern, responsive design that works on desktop and mobile
+- **Powerful CRUD Operations**: Create, view, edit, and delete financial records
+- **Advanced Filtering**: Filter and search across all financial data
+- **Statistical Dashboards**: Visual representations of payment and invoice data
+- **Report Generation**: Generate comprehensive financial reports
+- **PDF Preview**: View and download PDF invoices directly in the admin panel
+
+## Resource Panels
+
+TTpay adds four main resources to your Filament admin panel, each with dedicated management features:
+
+### Orders Panel
+
+The Orders panel allows you to manage customer orders:
+
+```php
+class OrderResource extends Resource
+{
+    protected static ?string $model = Order::class;
+    protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Form definition, table configuration, and actions
+}
+```
+
+Key features:
+- Create new orders with dynamic line items
+- Track order status
+- Convert orders to invoices
+- Process payments for orders
+- Filter and search order history
+
+### Invoices Panel
+
+The Invoices panel provides comprehensive invoice management:
+
+```php
+class InvoiceResource extends Resource
+{
+    protected static ?string $model = Invoice::class;
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Advanced form with conditional logic, PDF generation
+}
+```
+
+Key features:
+- Create invoices with detailed customer information
+- Add dynamic line items with automatic calculations
+- Generate PDF invoices
+- Track payment status
+- Send invoices via email
+- Create e-invoices from standard invoices
+
+### E-Invoices Panel
+
+The E-Invoices panel manages electronic invoices with RIK e-Financials integration:
+
+```php
+class EinvoiceResource extends Resource
+{
+    protected static ?string $model = Einvoice::class;
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // E-invoice specific functionality
+}
+```
+
+Key features:
+- View and manage electronic invoices
+- Track e-invoice delivery status
+- View XML content and validation results
+- Manage e-invoice delivery methods
+- Generate reports on e-invoice usage
+
+### Payments Panel
+
+The Payments panel tracks all payment transactions:
+
+```php
+class PaymentResource extends Resource
+{
+    protected static ?string $model = Payment::class;
+    protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Payment management and reporting
+}
+```
+
+Key features:
+- View all payment transactions
+- Filter by payment status and method
+- Process manual payments
+- Refund payments when necessary
+- View payment provider responses
+- Generate payment reports
+
+## Dashboard Widgets
+
+TTpay includes custom Filament dashboard widgets to provide at-a-glance insights into your financial data:
+
+### Payment Stats Widget
+
+The Payment Stats widget displays key payment metrics:
+
+```php
+class PaymentStatsWidget extends BaseWidget
+{
+    protected function getStats(): array
+    {
+        return [
+            Stat::make('Total Payments', Payment::count())
+                ->description('Total number of payments')
+                ->chart([7, 3, 4, 5, 6, 3, 5, 3])
+                ->color('success'),
+            
+            // Additional stats for different payment statuses
+        ];
+    }
+}
+```
+
+This widget provides:
+- Total number of payments
+- Number of payments by status (pending, failed, settled)
+- Visual trend indicators for payment volume
+- Color-coded status indicators
+
+## Report Pages
+
+TTpay extends Filament with custom report pages:
+
+### Payment Reports
+
+The Payment Reports page provides detailed payment analytics:
+
+```php
+class PaymentReports extends Page
+{
+    protected static string $resource = PaymentResource::class;
+    protected static string $view = 'ttpay::filament.resources.payment-resource.pages.payment-reports';
+    
+    // Advanced reporting functionality
+}
+```
+
+Features of the Payment Reports page:
+- Customizable date range filtering
+- Payment trend charts over time
+- Payment status breakdown
+- Payment method distribution
+- Total amount statistics
+- CSV/Excel export functionality
+
+## Custom Actions
+
+TTpay adds powerful custom actions to Filament resources:
+
+### Invoice Actions
+
+```php
+Action::make('generatePdf')
+    ->label('Generate PDF')
+    ->icon('heroicon-o-document')
+    ->action(function (Invoice $record) {
+        // PDF generation logic
+    }),
+
+Action::make('sendToCustomer')
+    ->label('Send to Customer')
+    ->icon('heroicon-o-paper-airplane')
+    ->requiresConfirmation()
+    ->action(function (Invoice $record) {
+        // Email sending logic
+    }),
+```
+
+### Payment Actions
+
+```php
+Action::make('refund')
+    ->label('Refund Payment')
+    ->icon('heroicon-o-arrow-path')
+    ->requiresConfirmation()
+    ->form([
+        TextInput::make('amount')
+            ->label('Refund Amount')
+            ->required(),
+        Textarea::make('reason')
+            ->label('Refund Reason')
+            ->required(),
+    ])
+    ->action(function (array $data, Payment $record) {
+        // Refund processing logic
+    }),
+```
+
+## Customizing the Admin Panel
+
+You can customize the TTpay admin panel to suit your specific needs:
+
+### Changing Navigation Labels and Icons
+
+You can override the navigation settings in your service provider:
+
+```php
+use Mavrickdeveloper\Ttpay\Filament\Resources\InvoiceResource;
+
+public function boot()
+{
+    // Change the navigation icon for InvoiceResource
+    InvoiceResource::configureUsing(function (InvoiceResource $resource) {
+        $resource->navigationIcon('heroicon-o-document-duplicate');
+        $resource->navigationLabel('Customer Invoices');
+    });
+}
+```
+
+### Adding Custom Fields
+
+You can extend TTpay's resources to add custom fields:
+
+```php
+use Mavrickdeveloper\Ttpay\Filament\Resources\InvoiceResource as BaseInvoiceResource;
+use Filament\Forms\Components\TextInput;
+
+class InvoiceResource extends BaseInvoiceResource
+{
+    public static function form(Form $form): Form
+    {
+        return parent::form($form)
+            ->schema([
+                // Add your custom field
+                TextInput::make('custom_field')
+                    ->label('Custom Field')
+                    ->columnSpan(2),
+                
+                // Original fields will be included automatically
+            ]);
+    }
+}
+```
+
+### Custom Authorization Policies
+
+Implement custom authorization policies to control access to TTpay resources:
+
+1. Create policy classes in your application:
+
+```php
+namespace App\Policies;
+
+use App\Models\User;
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+use Illuminate\Auth\Access\HandlesAuthorization;
+
+class InvoicePolicy
+{
+    use HandlesAuthorization;
+
+    public function viewAny(User $user): bool
+    {
+        return $user->hasPermission('view-invoices');
+    }
+
+    public function view(User $user, Invoice $invoice): bool
+    {
+        return $user->hasPermission('view-invoices');
+    }
+
+    // Additional policy methods...
+}
+```
+
+2. Register the policies in your `AuthServiceProvider`:
+
+```php
+protected $policies = [
+    \Mavrickdeveloper\Ttpay\Models\Invoice::class => \App\Policies\InvoicePolicy::class,
+    \Mavrickdeveloper\Ttpay\Models\Order::class => \App\Policies\OrderPolicy::class,
+    \Mavrickdeveloper\Ttpay\Models\Payment::class => \App\Policies\PaymentPolicy::class,
+];
+```
+
+### Custom Themes
+
+TTpay's admin panel respects your Filament theme configuration. Customize the appearance by configuring Filament's theming options:
+
+```php
+// config/filament.php
+'theme' => [
+    'colors' => [
+        'primary' => [
+            '50' => '238, 242, 255',
+            '100' => '224, 231, 255',
+            // Additional shades...
+        ],
+    ],
+],
+```
+
+## Adding Custom Widgets
+
+Add your own widgets to complement TTpay's functionality:
+
+```php
+namespace App\Filament\Widgets;
+
+use Filament\Widgets\StatsOverviewWidget as BaseWidget;
+use Filament\Widgets\StatsOverviewWidget\Stat;
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+
+class InvoiceStatsWidget extends BaseWidget
+{
+    protected function getStats(): array
+    {
+        return [
+            Stat::make('Total Invoices', Invoice::count())
+                ->description('All invoices')
+                ->chart([7, 3, 4, 5, 6, 3, 5, 3])
+                ->color('success'),
+            
+            Stat::make('Outstanding Amount', Invoice::where('status', 'pending')->sum('total'))
+                ->description('Unpaid invoices')
+                ->chart([3, 2, 4, 3, 5, 2, 4, 2])
+                ->color('warning')
+                ->prefix('€'),
+        ];
+    }
+}
+```
+
+Register the widget in your Filament service provider:
+
+```php
+// app/Providers/FilamentServiceProvider.php
+public function boot(): void
+{
+    Filament::registerWidgets([
+        \App\Filament\Widgets\InvoiceStatsWidget::class,
+    ]);
+}
+```
+
+## Conclusion
+
+TTpay's Filament admin panel provides a powerful, intuitive interface for managing all aspects of your payment and invoice workflows. The panel is highly customizable, allowing you to tailor it to your specific business needs while maintaining a cohesive user experience. With its comprehensive feature set and extensible architecture, TTpay's admin panel streamlines financial management for both administrators and users.
