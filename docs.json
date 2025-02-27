@@ -8,76 +8,95 @@
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "tabs": [
-      {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Get Started",
-            "pages": [
-              "introduction",
-              "quickstart"
-            ]
-          },
-          {
-            "group": "Essentials",
-            "pages": [
-              "essentials/installation",
-              "essentials/architecture",
-              "essentials/package-structure",
-              "essentials/admin-panel"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API Reference",
-        "groups": [
-          {
-            "group": "API Documentation",
-            "pages": [
-              "api-reference/api-integration"
-            ]
-          }
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "GitHub",
-          "href": "https://github.com/mavrickdeveloper/ttpay",
-          "icon": "github"
-        },
-        {
-          "anchor": "Support",
-          "href": "mailto:support@example.com",
-          "icon": "envelope"
-        }
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "essentials/architecture",
+        "essentials/package-structure",
+        "essentials/installation"
+      ]
+    },
+    {
+      "group": "Core Features",
+      "pages": [
+        "core/payment-processing",
+        "core/invoicing",
+        "core/e-invoicing",
+        "core/reporting"
+      ]
+    },
+    {
+      "group": "Admin Panel",
+      "pages": [
+        "essentials/admin-panel",
+        "admin/order-management",
+        "admin/invoice-management",
+        "admin/payment-management"
+      ]
+    },
+    {
+      "group": "API Integration",
+      "pages": [
+        "api-reference/api-integration",
+        "api-reference/rik-integration",
+        "api-reference/seb-integration",
+        "api-reference/payment-callbacks"
+      ]
+    },
+    {
+      "group": "Security",
+      "pages": [
+        "security/authentication",
+        "security/best-practices"
+      ]
+    },
+    {
+      "group": "Development",
+      "pages": [
+        "development/extending",
+        "development/customization",
+        "development/testing"
       ]
     }
-  },
+  ],
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@example.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Get Started",
-      "href": "https://github.com/mavrickdeveloper/ttpay"
-    }
+  "feedback": {
+    "thumbsRating": true
   },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/mavrickdeveloper/ttpay"
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@example.com"
     }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/mavrickdeveloper/ttpay"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "rectangle-terminal",
+      "url": "api-reference/api-integration"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://github.com/mavrickdeveloper/ttpay/discussions"
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/mavrickdeveloper/ttpay"
   }
 }

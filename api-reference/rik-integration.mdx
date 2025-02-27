@@ -1,0 +1,532 @@
+---
+title: 'RIK e-Financials Integration'
+description: 'Detailed documentation for integrating with the RIK e-Financials API'
+---
+
+# RIK e-Financials Integration
+
+TTpay provides comprehensive integration with the RIK e-Financials API for electronic invoicing. This document provides detailed information about this integration and how to use it effectively.
+
+## Overview
+
+The RIK e-Financials API allows you to:
+
+1. Create and send electronic invoices
+2. Check invoice status and delivery information
+3. Retrieve invoice data
+4. Manage recipients and delivery methods
+
+## Configuration
+
+Configure the RIK e-Financials integration in your `.env` file:
+
+```
+TTPAY_RIK_USERNAME=your_rik_username
+TTPAY_RIK_PASSWORD=your_rik_password
+TTPAY_RIK_API_KEY=your_rik_api_key
+TTPAY_RIK_BASE_URL=https://rmp-api.rik.ee
+```
+
+These environment variables are used in the TTpay configuration:
+
+```php
+// config/ttpay.php
+'rik' => [
+    'username' => env('TTPAY_RIK_USERNAME'),
+    'password' => env('TTPAY_RIK_PASSWORD'),
+    'api_key' => env('TTPAY_RIK_API_KEY'),
+    'base_url' => env('TTPAY_RIK_BASE_URL', 'https://rmp-api.rik.ee'),
+],
+```
+
+## RIK API Specification
+
+The RIK API specification is defined in the `src/rik.yaml` file, which is loaded by the `RikApiTesterController` using Symfony's YAML parser. This ensures that all endpoints defined in the YAML file are automatically available in the API tester interface without manual updates.
+
+```php
+public function apiSpec()
+{
+    $yamlFile = __DIR__ . '/../../rik.yaml';
+    $yaml = Yaml::parseFile($yamlFile);
+    
+    return response()->json($yaml);
+}
+```
+
+## Authentication
+
+The RIK API uses a custom authentication method based on HMAC signatures:
+
+```php
+public function generateAuthorizationHeader($apiKeyId, $apiKeyPublicValue, $apiKeyPassword, $url)
+{
+    $timestamp = time();
+    $nonce = $this->generateNonce();
+    
+    // Calculate signature
+    $requestLine = "post " . strtolower($url) . " http/1.1";
+    $hashedPassword = base64_encode(hash('sha512', $apiKeyPassword, true));
+    $hmacParts = array('RIK-AUTH-1.0', $apiKeyId, $timestamp, $nonce, $requestLine);
+    $hmacSignature = base64_encode(
+        hash_hmac('sha512', implode("\n", $hmacParts), $hashedPassword, true)
+    );
+    
+    // Build headers
+    $headers = [
+        'Authorization' => sprintf(
+            'RIK-AUTH apiKeyId="%s", timestamp="%s", nonce="%s", signature="%s"',
+            $apiKeyId,
+            $timestamp,
+            $nonce,
+            $hmacSignature
+        ),
+        'X-API-KEY' => $apiKeyPublicValue,
+        'Content-Type' => 'application/json',
+    ];
+    
+    return $headers;
+}
+```
+
+## RIK API Tester
+
+TTpay includes a built-in RIK API tester for exploring and testing the RIK e-Financials API:
+
+```
+/rik-api-tester
+```
+
+The API tester provides a Swagger UI interface for:
+
+1. Testing API endpoints
+2. Generating authentication headers
+3. Exploring API documentation
+4. Viewing request and response data
+
+### Controller Implementation
+
+The API tester is implemented in the `RikApiTesterController`:
+
+```php
+namespace Mavrickdeveloper\Ttpay\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Symfony\Component\Yaml\Yaml;
+
+class RikApiTesterController
+{
+    public function index()
+    {
+        // Get credentials from config
+        $apiKeyId = config('ttpay.rik.username');
+        $apiKeyPublicValue = config('ttpay.rik.api_key');
+        $apiKeyPassword = config('ttpay.rik.password');
+        
+        // Generate default headers for a generic request
+        $defaultRequestUrl = '/clients'; // Default request path
+        $headers = $this->generateAuthorizationHeader(
+            $apiKeyId, 
+            $apiKeyPublicValue, 
+            $apiKeyPassword, 
+            $defaultRequestUrl
+        );
+        
+        return view('ttpay::rik-api-tester', [
+            'defaultHeaders' => $headers,
+            'apiKeyId' => $apiKeyId,
+            'apiKeyPublicValue' => $apiKeyPublicValue,
+            'apiKeyPassword' => $apiKeyPassword
+        ]);
+    }
+    
+    public function apiSpec()
+    {
+        $yamlFile = __DIR__ . '/../../rik.yaml';
+        $yaml = Yaml::parseFile($yamlFile);
+        
+        return response()->json($yaml);
+    }
+    
+    public function generateAuthHeaders(Request $request)
+    {
+        $apiKeyId = $request->input('apiKeyId');
+        $apiKeyPublicValue = $request->input('apiKeyPublicValue');
+        $apiKeyPassword = $request->input('apiKeyPassword');
+        $url = $request->input('url');
+        
+        $headers = $this->generateAuthorizationHeader(
+            $apiKeyId,
+            $apiKeyPublicValue,
+            $apiKeyPassword,
+            $url
+        );
+        
+        return response()->json(['headers' => $headers]);
+    }
+    
+    public function generateFreshAuthHeaders(Request $request)
+    {
+        $apiKeyId = config('ttpay.rik.username');
+        $apiKeyPublicValue = config('ttpay.rik.api_key');
+        $apiKeyPassword = config('ttpay.rik.password');
+        $url = $request->input('url');
+        
+        $headers = $this->generateAuthorizationHeader(
+            $apiKeyId,
+            $apiKeyPublicValue,
+            $apiKeyPassword,
+            $url
+        );
+        
+        return response()->json(['headers' => $headers]);
+    }
+    
+    public function generateAuthorizationHeader($apiKeyId, $apiKeyPublicValue, $apiKeyPassword, $url)
+    {
+        $timestamp = time();
+        $nonce = $this->generateNonce();
+        
+        // Calculate signature
+        $requestLine = "post " . strtolower($url) . " http/1.1";
+        $hashedPassword = base64_encode(hash('sha512', $apiKeyPassword, true));
+        $hmacParts = array('RIK-AUTH-1.0', $apiKeyId, $timestamp, $nonce, $requestLine);
+        $hmacSignature = base64_encode(
+            hash_hmac('sha512', implode("\n", $hmacParts), $hashedPassword, true)
+        );
+        
+        // Build headers
+        $headers = [
+            'Authorization' => sprintf(
+                'RIK-AUTH apiKeyId="%s", timestamp="%s", nonce="%s", signature="%s"',
+                $apiKeyId,
+                $timestamp,
+                $nonce,
+                $hmacSignature
+            ),
+            'X-API-KEY' => $apiKeyPublicValue,
+            'Content-Type' => 'application/json',
+        ];
+        
+        return $headers;
+    }
+    
+    protected function generateNonce()
+    {
+        return bin2hex(random_bytes(16));
+    }
+}
+```
+
+### API Tester View
+
+The API tester view (`rik-api-tester.blade.php`) provides a user-friendly interface for interacting with the RIK API:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIK API Tester</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@3/swagger-ui.css">
+    <style>
+        /* Custom styles */
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>RIK e-Financials API Tester</h1>
+        <p>Use this tool to test and explore the RIK e-Financials API</p>
+    </div>
+
+    <div id="swagger-ui"></div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@3/swagger-ui-bundle.js"></script>
+    <script>
+        // Initialize Swagger UI
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: "{{ route('rik-api-spec') }}",
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.SwaggerUIStandalonePreset
+                ],
+                requestInterceptor: (request) => {
+                    // Add authentication headers to each request
+                    fetch("{{ route('rik-api-fresh-auth') }}", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": "{{ csrf_token() }}"
+                        },
+                        body: JSON.stringify({ url: request.url })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        Object.keys(data.headers).forEach(key => {
+                            request.headers[key] = data.headers[key];
+                        });
+                    });
+                    return request;
+                },
+                layout: "BaseLayout",
+                deepLinking: true,
+            });
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>
+```
+
+## Supported API Endpoints
+
+The RIK API supports the following key endpoints:
+
+### Check API Status
+
+```
+GET /status
+```
+
+Checks if the API is operational.
+
+### Get Clients
+
+```
+GET /clients
+```
+
+Retrieves a list of clients that can receive e-invoices.
+
+### Search Clients
+
+```
+GET /clients/search
+```
+
+Searches for clients by name, registry code, or other criteria.
+
+### Create Invoice
+
+```
+POST /invoices
+```
+
+Creates and sends an e-invoice:
+
+```json
+{
+  "invoice": "<XML_CONTENT>",
+  "deliveryMethod": "email",
+  "recipientCode": "12345678"
+}
+```
+
+### Check Invoice Status
+
+```
+GET /invoices/{referenceNumber}
+```
+
+Checks the status of a specific e-invoice.
+
+### Get Invoice Details
+
+```
+GET /invoices/{referenceNumber}/details
+```
+
+Retrieves detailed information about an e-invoice.
+
+## Creating E-Invoices
+
+To create and send an e-invoice using the RIK API:
+
+```php
+use Mavrickdeveloper\Ttpay\Models\Einvoice;
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+use Illuminate\Support\Facades\Http;
+
+public function sendEinvoice(Invoice $invoice)
+{
+    // Create e-invoice record
+    $einvoice = Einvoice::create([
+        'invoice_id' => $invoice->id,
+        'status' => 'draft',
+        'recipient_code' => $invoice->customer_code,
+        'recipient_name' => $invoice->customer_name,
+        'delivery_method' => 'email',
+    ]);
+    
+    // Generate XML content
+    $einvoice->generateXml();
+    
+    // Authentication headers
+    $apiKeyId = config('ttpay.rik.username');
+    $apiKeyPublicValue = config('ttpay.rik.api_key');
+    $apiKeyPassword = config('ttpay.rik.password');
+    
+    // RIK API endpoint for sending e-invoices
+    $endpoint = '/invoices';
+    
+    // Generate authorization headers
+    $controller = new RikApiTesterController();
+    $headers = $controller->generateAuthorizationHeader(
+        $apiKeyId,
+        $apiKeyPublicValue,
+        $apiKeyPassword,
+        $endpoint
+    );
+    
+    // Prepare request data
+    $requestData = [
+        'invoice' => $einvoice->xml_content,
+        'deliveryMethod' => $einvoice->delivery_method,
+        'recipientCode' => $einvoice->recipient_code,
+    ];
+    
+    // Send request to RIK API
+    $response = Http::withHeaders($headers)
+        ->post(config('ttpay.rik.base_url') . $endpoint, $requestData);
+    
+    // Process response
+    if ($response->successful()) {
+        $responseData = $response->json();
+        
+        // Update e-invoice with response data
+        $einvoice->update([
+            'status' => 'sent',
+            'reference_number' => $responseData['referenceNumber'] ?? null,
+            'response_data' => json_encode($responseData),
+        ]);
+        
+        return [
+            'success' => true,
+            'message' => 'E-invoice sent successfully',
+            'einvoice' => $einvoice,
+        ];
+    } else {
+        // Handle error
+        return [
+            'success' => false,
+            'message' => 'Failed to send e-invoice: ' . $response->body(),
+            'einvoice' => $einvoice,
+        ];
+    }
+}
+```
+
+## Checking E-Invoice Status
+
+To check the status of an e-invoice:
+
+```php
+public function checkEinvoiceStatus(Einvoice $einvoice)
+{
+    if (!$einvoice->reference_number) {
+        return [
+            'success' => false,
+            'message' => 'E-invoice has no reference number',
+        ];
+    }
+    
+    // Authentication headers
+    $apiKeyId = config('ttpay.rik.username');
+    $apiKeyPublicValue = config('ttpay.rik.api_key');
+    $apiKeyPassword = config('ttpay.rik.password');
+    
+    // RIK API endpoint for checking e-invoice status
+    $endpoint = '/invoices/' . $einvoice->reference_number;
+    
+    // Generate authorization headers
+    $controller = new RikApiTesterController();
+    $headers = $controller->generateAuthorizationHeader(
+        $apiKeyId,
+        $apiKeyPublicValue,
+        $apiKeyPassword,
+        $endpoint
+    );
+    
+    // Send request to RIK API
+    $response = Http::withHeaders($headers)
+        ->get(config('ttpay.rik.base_url') . $endpoint);
+    
+    // Process response
+    if ($response->successful()) {
+        $responseData = $response->json();
+        
+        // Update e-invoice status
+        $einvoice->update([
+            'status' => $responseData['status'] ?? $einvoice->status,
+            'response_data' => json_encode($responseData),
+        ]);
+        
+        return [
+            'success' => true,
+            'message' => 'E-invoice status updated',
+            'status' => $responseData['status'] ?? $einvoice->status,
+            'data' => $responseData,
+        ];
+    } else {
+        // Handle error
+        return [
+            'success' => false,
+            'message' => 'Failed to check e-invoice status: ' . $response->body(),
+        ];
+    }
+}
+```
+
+## Error Handling
+
+The RIK API integration includes robust error handling:
+
+```php
+try {
+    $response = Http::withHeaders($headers)
+        ->post(config('ttpay.rik.base_url') . $endpoint, $requestData);
+    
+    if ($response->failed()) {
+        $error = $response->json();
+        
+        throw new \Exception(
+            'RIK API Error: ' . ($error['message'] ?? 'Unknown error'),
+            $response->status()
+        );
+    }
+    
+    // Process successful response
+} catch (\Exception $e) {
+    // Log the error
+    \Log::error('RIK API Error: ' . $e->getMessage(), [
+        'code' => $e->getCode(),
+        'trace' => $e->getTraceAsString(),
+    ]);
+    
+    // Handle the error
+    return [
+        'success' => false,
+        'message' => $e->getMessage(),
+        'code' => $e->getCode(),
+    ];
+}
+```
+
+## Best Practices
+
+When working with the RIK e-Financials API, follow these best practices:
+
+1. **Store Credentials Securely**: Always store API credentials in environment variables, never hardcode them.
+2. **Validate Input**: Validate all data before sending it to the API to avoid errors.
+3. **Handle Errors Gracefully**: Implement comprehensive error handling to provide meaningful feedback.
+4. **Log Everything**: Log all API requests, responses, and errors for troubleshooting.
+5. **Use Queues**: For production use, consider using Laravel queues for sending e-invoices to avoid blocking user requests.
+6. **Retry Failed Requests**: Implement a retry mechanism for failed requests with exponential backoff.
+7. **Monitor API Limits**: Be aware of any rate limits imposed by the RIK API and stay within them.
+
+## Conclusion
+
+TTpay's integration with the RIK e-Financials API provides a robust solution for electronic invoicing. With the built-in API tester, comprehensive authentication handling, and clear documentation, you have all the tools you need to implement e-invoicing in your application.

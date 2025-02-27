@@ -1,0 +1,174 @@
+---
+title: 'Payment Processing'
+description: 'Learn how TTpay handles payment processing with SEB and other providers'
+---
+
+# Payment Processing
+
+The TTpay package provides robust payment processing capabilities using SEB payment gateway and other providers. This document explains how payment processing works and how to implement it in your application.
+
+## Overview
+
+TTpay's payment processing system is built around the following components:
+
+1. **Payment Client**: Handles payment request creation and submission
+2. **Callback Handler**: Processes payment notifications from providers
+3. **Payment Form**: Generates and manages payment form presentation
+4. **Status Service**: Checks and updates payment statuses
+
+## Payment Flow
+
+The typical payment flow in TTpay follows these steps:
+
+1. **Create Order**: An order is created in your application
+2. **Generate Invoice**: An invoice is created based on the order
+3. **Initiate Payment**: Payment is initiated using the chosen payment method
+4. **Process Callback**: The payment provider sends a callback with the payment result
+5. **Update Status**: The payment status is updated in your application
+
+## Using the Payment Client
+
+The `PaymentClient` class handles communication with payment providers:
+
+```php
+use Mavrickdeveloper\Ttpay\Clients\Payment\PaymentClient;
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+
+public function processPayment(Invoice $invoice, string $paymentMethod)
+{
+    $paymentClient = new PaymentClient();
+    
+    // Process the payment
+    $paymentResponse = $paymentClient->processPayment(
+        $invoice,
+        $paymentMethod,
+        [
+            // Additional parameters specific to the payment method
+        ]
+    );
+    
+    // Handle the response
+    if ($paymentResponse->isSuccessful()) {
+        // Redirect to payment provider or show success message
+        return redirect($paymentResponse->getRedirectUrl());
+    } else {
+        // Handle failure
+        return back()->withErrors($paymentResponse->getErrorMessage());
+    }
+}
+```
+
+## Supported Payment Methods
+
+TTpay supports various payment methods through SEB and other providers:
+
+### Credit/Debit Cards
+
+```php
+$paymentResponse = $paymentClient->processPayment(
+    $invoice,
+    'card',
+    [
+        'return_url' => route('payment.return'),
+        'cancel_url' => route('payment.cancel'),
+    ]
+);
+```
+
+### Bank Transfer
+
+```php
+$paymentResponse = $paymentClient->processPayment(
+    $invoice,
+    'bank_transfer',
+    [
+        'return_url' => route('payment.return'),
+        'cancel_url' => route('payment.cancel'),
+    ]
+);
+```
+
+### Other Payment Methods
+
+The package is designed to be extensible, allowing you to implement additional payment methods as needed.
+
+## Payment Callbacks
+
+Payment providers send callbacks to notify your application about payment status changes. TTpay handles these callbacks through the `PaymentCallbackController`:
+
+```php
+// routes/web.php
+Route::group(['prefix' => 'payment'], function () {
+    Route::get('/callback/{order_reference}', [PaymentCallbackController::class, 'handle'])
+        ->name('payment.callback')
+        ->withoutMiddleware([VerifyCsrfToken::class]);
+});
+```
+
+The controller validates the callback request, updates the payment status, and performs necessary actions based on the payment result.
+
+## Security Considerations
+
+TTpay implements several security measures for payment processing:
+
+1. **Request Validation**: All payment requests are validated before submission
+2. **Nonce Validation**: Each callback is verified with a unique nonce to prevent replay attacks
+3. **Signature Verification**: Callback signatures are verified to ensure authenticity
+4. **HTTPS Enforcement**: All communication with payment providers uses HTTPS
+5. **Order Reference Validation**: Order references are checked to ensure they match existing records
+
+## Error Handling
+
+TTpay provides comprehensive error handling for payment processing:
+
+```php
+try {
+    $paymentResponse = $paymentClient->processPayment($invoice, $paymentMethod, $params);
+    // Handle successful request
+} catch (PaymentException $e) {
+    // Handle payment-specific errors
+    Log::error('Payment error: ' . $e->getMessage(), [
+        'invoice_id' => $invoice->id,
+        'payment_method' => $paymentMethod,
+    ]);
+} catch (\Exception $e) {
+    // Handle general errors
+    Log::error('General error during payment: ' . $e->getMessage());
+}
+```
+
+## Logging
+
+TTpay logs all payment-related activities:
+
+1. **Payment Requests**: Details of all payment requests are logged
+2. **Payment Responses**: Responses from payment providers are logged
+3. **Callbacks**: All callback requests and their processing results are logged
+4. **Errors**: Any errors that occur during payment processing are logged
+
+## Testing Payments
+
+TTpay includes a convenient SEB API tester for testing payment processing:
+
+```
+/seb-api-tester
+```
+
+This page allows you to:
+
+1. Test payment creation and processing
+2. View requests and responses
+3. Simulate callbacks
+4. Test different payment methods and scenarios
+
+## Customizing Payment Processing
+
+You can customize payment processing by:
+
+1. **Extending the PaymentClient**: Create a custom client that extends the base PaymentClient
+2. **Custom Callback Handlers**: Implement custom callback handling logic
+3. **Event Listeners**: Listen for payment events and perform custom actions
+
+## Conclusion
+
+TTpay's payment processing system provides a robust, secure, and flexible way to handle payments in your Laravel application. By following the guidelines in this document, you can implement payment processing with confidence, knowing that your application is using best practices for security and error handling.

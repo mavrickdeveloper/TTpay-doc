@@ -1,0 +1,342 @@
+---
+title: 'E-Invoicing'
+description: 'Learn how to create and manage electronic invoices using RIK e-Financials integration'
+---
+
+# E-Invoicing
+
+TTpay provides comprehensive electronic invoicing functionality through integration with the RIK e-Financials API. This document explains how to use the e-invoicing features of the package.
+
+## E-Invoice Model
+
+The `Einvoice` model represents an electronic invoice in the system:
+
+```php
+namespace Mavrickdeveloper\Ttpay\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Einvoice extends Model
+{
+    // Properties and methods
+}
+```
+
+### Key Fields
+
+- `id`: Unique identifier
+- `invoice_id`: Reference to the related invoice
+- `status`: E-invoice status (draft, sent, delivered, etc.)
+- `reference_number`: Reference number in the RIK system
+- `recipient_code`: Recipient's registration code
+- `recipient_name`: Recipient's name
+- `delivery_method`: Method of e-invoice delivery
+- `xml_content`: XML representation of the e-invoice
+- `response_data`: Response data from the RIK API
+
+## Creating E-Invoices
+
+### From an Invoice
+
+The most common way to create an e-invoice is from an existing invoice:
+
+```php
+use Mavrickdeveloper\Ttpay\Models\Invoice;
+use Mavrickdeveloper\Ttpay\Models\Einvoice;
+
+public function createEinvoice($invoiceId)
+{
+    $invoice = Invoice::findOrFail($invoiceId);
+    
+    // Create e-invoice from regular invoice
+    $einvoice = Einvoice::create([
+        'invoice_id' => $invoice->id,
+        'status' => 'draft',
+        'recipient_code' => $invoice->customer_code,
+        'recipient_name' => $invoice->customer_name,
+        'delivery_method' => 'email',
+    ]);
+    
+    // Generate XML content for the e-invoice
+    $einvoice->generateXml();
+    
+    return $einvoice;
+}
+```
+
+## RIK e-Financials Integration
+
+TTpay integrates with the RIK e-Financials API to send e-invoices:
+
+```php
+use Mavrickdeveloper\Ttpay\Http\Controllers\RikApiTesterController;
+use Mavrickdeveloper\Ttpay\Models\Einvoice;
+
+public function sendToRik(Einvoice $einvoice)
+{
+    // Authentication headers
+    $apiKeyId = config('ttpay.rik.username');
+    $apiKeyPublicValue = config('ttpay.rik.api_key');
+    $apiKeyPassword = config('ttpay.rik.password');
+    
+    // RIK API endpoint for sending e-invoices
+    $endpoint = '/invoices';
+    
+    // Generate authorization headers
+    $controller = new RikApiTesterController();
+    $headers = $controller->generateAuthorizationHeader(
+        $apiKeyId,
+        $apiKeyPublicValue,
+        $apiKeyPassword,
+        $endpoint
+    );
+    
+    // Prepare request data
+    $requestData = [
+        'invoice' => $einvoice->xml_content,
+        'deliveryMethod' => $einvoice->delivery_method,
+        'recipientCode' => $einvoice->recipient_code,
+    ];
+    
+    // Send request to RIK API
+    $client = new \GuzzleHttp\Client();
+    $response = $client->post(config('ttpay.rik.base_url') . $endpoint, [
+        'headers' => $headers,
+        'json' => $requestData,
+    ]);
+    
+    // Process response
+    $responseData = json_decode($response->getBody()->getContents(), true);
+    
+    // Update e-invoice with response data
+    $einvoice->update([
+        'status' => 'sent',
+        'reference_number' => $responseData['referenceNumber'] ?? null,
+        'response_data' => json_encode($responseData),
+    ]);
+    
+    return $einvoice;
+}
+```
+
+## RIK API Tester
+
+TTpay includes a built-in RIK API tester for exploring and testing the RIK e-Financials API:
+
+```
+/rik-api-tester
+```
+
+The API tester provides a Swagger UI interface for:
+
+1. Testing API endpoints
+2. Generating authentication headers
+3. Exploring API documentation
+4. Viewing request and response data
+
+### Using the RIK API Tester
+
+Navigate to the `/rik-api-tester` route in your application to access the API tester:
+
+```php
+// routes/web.php
+Route::get('/rik-api-tester', [RikApiTesterController::class, 'index'])->name('rik-api-tester');
+Route::get('/rik-api-spec', [RikApiTesterController::class, 'apiSpec'])->name('rik-api-spec');
+Route::post('/rik-api-generate-auth', [RikApiTesterController::class, 'generateAuthHeaders'])->name('rik-api-generate-auth');
+Route::post('/rik-api-fresh-auth', [RikApiTesterController::class, 'generateFreshAuthHeaders'])->name('rik-api-fresh-auth');
+```
+
+## E-Invoice Configuration
+
+Configure the RIK e-Financials integration in your `.env` file:
+
+```
+TTPAY_RIK_USERNAME=your_rik_username
+TTPAY_RIK_PASSWORD=your_rik_password
+TTPAY_RIK_API_KEY=your_rik_api_key
+TTPAY_RIK_BASE_URL=https://rmp-api.rik.ee
+```
+
+## Managing E-Invoices with Filament
+
+TTpay integrates with Filament to provide a comprehensive interface for managing e-invoices through the `EinvoiceResource`:
+
+```php
+namespace Mavrickdeveloper\Ttpay\Filament\Resources;
+
+use Filament\Forms;
+use Filament\Tables;
+use Filament\Resources\Resource;
+use Mavrickdeveloper\Ttpay\Models\Einvoice;
+use Mavrickdeveloper\Ttpay\Filament\Resources\EinvoiceResource\Pages;
+
+class EinvoiceResource extends Resource
+{
+    protected static ?string $model = Einvoice::class;
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationGroup = 'Finance';
+    
+    // Form and table configurations
+}
+```
+
+The Filament interface allows you to:
+
+1. Create and manage e-invoices
+2. Send e-invoices through the RIK API
+3. View e-invoice statuses
+4. View XML content
+5. Track delivery status
+
+## E-Invoice XML Generation
+
+TTpay automatically generates XML content for e-invoices according to the Estonian e-invoice standard:
+
+```php
+namespace Mavrickdeveloper\Ttpay\Models;
+
+class Einvoice extends Model
+{
+    // ...
+    
+    public function generateXml()
+    {
+        $invoice = $this->invoice;
+        
+        // Create XML document
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom->formatOutput = true;
+        
+        // Create root element
+        $root = $dom->createElement('Invoice');
+        $root->setAttribute('xmlns', 'http://www.w3.org/2001/XMLSchema');
+        $dom->appendChild($root);
+        
+        // Add invoice header
+        $header = $dom->createElement('Header');
+        $root->appendChild($header);
+        
+        // Add invoice details
+        $invoiceNumber = $dom->createElement('InvoiceNumber', $invoice->number);
+        $header->appendChild($invoiceNumber);
+        
+        $invoiceDate = $dom->createElement('InvoiceDate', $invoice->date->format('Y-m-d'));
+        $header->appendChild($invoiceDate);
+        
+        // Add seller information
+        $seller = $dom->createElement('Seller');
+        $root->appendChild($seller);
+        
+        $sellerName = $dom->createElement('Name', config('ttpay.company_name'));
+        $seller->appendChild($sellerName);
+        
+        $sellerRegNumber = $dom->createElement('RegNumber', config('ttpay.company_reg'));
+        $seller->appendChild($sellerRegNumber);
+        
+        // Add buyer information
+        $buyer = $dom->createElement('Buyer');
+        $root->appendChild($buyer);
+        
+        $buyerName = $dom->createElement('Name', $invoice->customer_name);
+        $buyer->appendChild($buyerName);
+        
+        $buyerRegNumber = $dom->createElement('RegNumber', $invoice->customer_code);
+        $buyer->appendChild($buyerRegNumber);
+        
+        // Add invoice items
+        $items = $dom->createElement('Items');
+        $root->appendChild($items);
+        
+        foreach ($invoice->items as $item) {
+            $invoiceItem = $dom->createElement('Item');
+            $items->appendChild($invoiceItem);
+            
+            $description = $dom->createElement('Description', $item->description);
+            $invoiceItem->appendChild($description);
+            
+            $quantity = $dom->createElement('Quantity', $item->quantity);
+            $invoiceItem->appendChild($quantity);
+            
+            $price = $dom->createElement('Price', $item->unit_price);
+            $invoiceItem->appendChild($price);
+            
+            $amount = $dom->createElement('Amount', $item->quantity * $item->unit_price);
+            $invoiceItem->appendChild($amount);
+            
+            $vatRate = $dom->createElement('VatRate', $item->tax_rate);
+            $invoiceItem->appendChild($vatRate);
+        }
+        
+        // Add totals
+        $totals = $dom->createElement('Totals');
+        $root->appendChild($totals);
+        
+        $netAmount = $dom->createElement('NetAmount', $invoice->subtotal);
+        $totals->appendChild($netAmount);
+        
+        $vatAmount = $dom->createElement('VatAmount', $invoice->tax);
+        $totals->appendChild($vatAmount);
+        
+        $totalAmount = $dom->createElement('TotalAmount', $invoice->total);
+        $totals->appendChild($totalAmount);
+        
+        // Update e-invoice with XML content
+        $this->xml_content = $dom->saveXML();
+        $this->save();
+        
+        return $this->xml_content;
+    }
+}
+```
+
+## Checking E-Invoice Status
+
+You can check the status of an e-invoice by querying the RIK API:
+
+```php
+public function checkStatus(Einvoice $einvoice)
+{
+    if (!$einvoice->reference_number) {
+        return null;
+    }
+    
+    // Authentication headers
+    $apiKeyId = config('ttpay.rik.username');
+    $apiKeyPublicValue = config('ttpay.rik.api_key');
+    $apiKeyPassword = config('ttpay.rik.password');
+    
+    // RIK API endpoint for checking e-invoice status
+    $endpoint = '/invoices/' . $einvoice->reference_number;
+    
+    // Generate authorization headers
+    $controller = new RikApiTesterController();
+    $headers = $controller->generateAuthorizationHeader(
+        $apiKeyId,
+        $apiKeyPublicValue,
+        $apiKeyPassword,
+        $endpoint
+    );
+    
+    // Send request to RIK API
+    $client = new \GuzzleHttp\Client();
+    $response = $client->get(config('ttpay.rik.base_url') . $endpoint, [
+        'headers' => $headers,
+    ]);
+    
+    // Process response
+    $responseData = json_decode($response->getBody()->getContents(), true);
+    
+    // Update e-invoice status
+    $einvoice->update([
+        'status' => $responseData['status'] ?? $einvoice->status,
+        'response_data' => json_encode($responseData),
+    ]);
+    
+    return $responseData;
+}
+```
+
+## Conclusion
+
+TTpay's e-invoicing system provides a comprehensive solution for creating, sending, and managing electronic invoices through the RIK e-Financials API. With the built-in API tester, Filament integration, and automatic XML generation, you have all the tools you need to implement e-invoicing in your application.
