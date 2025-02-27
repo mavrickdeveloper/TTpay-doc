@@ -9,6 +9,9 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
+    "pages": [
+      "index"
+    ],
     "groups": [
       {
         "group": "Getting Started",
@@ -18,57 +21,26 @@
         ]
       },
       {
-        "group": "Architecture",
-        "pages": [
-          "essentials/architecture",
-          "essentials/package-structure",
-          "essentials/installation"
-        ]
-      },
-      {
-        "group": "Core Features",
-        "pages": [
-          "core/payment-processing",
-          "core/invoicing",
-          "core/e-invoicing",
-          "core/reporting"
-        ]
-      },
-      {
-        "group": "Admin Panel",
-        "pages": [
-          "essentials/admin-panel",
-          "admin/order-management",
-          "admin/invoice-management",
-          "admin/payment-management"
-        ]
-      },
-      {
-        "group": "API Integration",
+        "group": "API Reference",
         "pages": [
           "api-reference/api-integration",
           "api-reference/rik-integration",
           "api-reference/seb-integration",
-          "api-reference/payment-clients",
-          "api-reference/payment-callbacks"
+          "api-reference/payment-clients"
         ]
       },
       {
         "group": "Security",
         "pages": [
-          "security/security-measures",
-          "security/authentication",
-          "security/best-practices"
+          "security/security-measures"
         ]
       },
       {
         "group": "Development",
         "pages": [
-          "development/extending",
-          "development/customization",
-          "development/testing",
-          "development/testing-page",
-          "development/logging-monitoring"
+          "development",
+          "development/logging-monitoring",
+          "development/testing-page"
         ]
       }
     ]
